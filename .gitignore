@@ -1,0 +1,3 @@
+# any license files and secrets
+**/secrets/
+**/tls/

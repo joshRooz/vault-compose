@@ -1,0 +1,246 @@
+name: vault
+
+services:
+  # the hashicorp/vault image automatically creates a volume and mounts to /vault/file
+  # so using that with raft, even though the naming conventions do not match.
+
+  # perf primary - san francisco, california
+  usca:
+    image: ${VAULT_IMAGE}:${VAULT_VERSION}
+    command: &vault-command
+      - /bin/sh
+      - -c
+      - |
+        sed "s|{{HOSTNAME}}|$$HOSTNAME|g ; s|{{CLUSTER_CONTEXT}}|$$CLUSTER_CONTEXT|g ; s|{{DOMAIN}}|$$DOMAIN|g" /tmp/vault.tpl.hcl > /vault/config/vault.hcl
+        /bin/vault server -config=/vault/config #-log-level=debug
+    restart: unless-stopped
+    deploy: &vault-servers
+      replicas: 3
+    networks: &vault-flat
+      - vault
+    ports: &vault-ports
+      - 8200/tcp
+    environment: &vault-env-vars
+      VAULT_LICENSE_PATH: /vault/license/vault.hclic
+      VAULT_CACERT: /vault/tls/ca.pem
+      DOMAIN: example.internal
+      CLUSTER_CONTEXT: usca
+    configs: &usca-configs
+      # shared configs
+      - source: vault-tpl-config
+        target: /tmp/vault.tpl.hcl
+      - source: root-ca
+        target: /vault/tls/ca.pem
+      # per cluster configs
+      - source: usca-pki-bundle
+        target: /vault/tls/bundle.pem
+    secrets: &usca-secrets
+      # shared secrets
+      - source: vault-enterprise-license
+        target: /vault/license/vault.hclic
+      # per cluster secrets
+      - source: usca-pki-key
+        target: /vault/tls/key.pem
+    cap_add: &vault-capabilities
+      - IPC_LOCK
+
+  uscaps: # perf standbys
+    image: ${VAULT_IMAGE}:${VAULT_VERSION}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        sed "s|{{HOSTNAME}}|$$HOSTNAME|g ; s|{{CLUSTER_CONTEXT}}|$$CLUSTER_CONTEXT|g ; s|{{DOMAIN}}|$$DOMAIN|g ; /^  node_id = /a\  retry_join_as_non_voter = true" /tmp/vault.tpl.hcl > /vault/config/vault.hcl
+        /bin/vault server -config=/vault/config #-log-level=debug
+    restart: unless-stopped
+    deploy: *vault-servers
+    networks: *vault-flat
+    ports: *vault-ports
+    environment: *vault-env-vars
+    configs: *usca-configs
+    secrets: *usca-secrets
+    cap_add: *vault-capabilities
+
+  # perf secondary - new york, new york
+  usny:
+    image: ${VAULT_IMAGE}:${VAULT_VERSION}
+    command: *vault-command
+    restart: unless-stopped
+    deploy: *vault-servers
+    networks: *vault-flat
+    ports: *vault-ports
+    environment:
+      <<: *vault-env-vars
+      CLUSTER_CONTEXT: usny
+    configs:
+      # shared configs
+      - source: vault-tpl-config
+        target: /tmp/vault.tpl.hcl
+      - source: root-ca
+        target: /vault/tls/ca.pem
+      # per cluster configs
+      - source: usny-pki-bundle
+        target: /vault/tls/bundle.pem
+    secrets:
+      # shared secrets
+      - source: vault-enterprise-license
+        target: /vault/license/vault.hclic
+      # per cluster secrets
+      - source: usny-pki-key
+        target: /vault/tls/key.pem
+    cap_add: *vault-capabilities
+
+  # perf primary dr - chicago, illinois
+  usil:
+    image: ${VAULT_IMAGE}:${VAULT_VERSION}
+    command: *vault-command
+    restart: unless-stopped
+    deploy: *vault-servers
+    networks: *vault-flat
+    ports: *vault-ports
+    environment:
+      <<: *vault-env-vars
+      CLUSTER_CONTEXT: usil
+    configs:
+      # shared configs
+      - source: vault-tpl-config
+        target: /tmp/vault.tpl.hcl
+      - source: root-ca
+        target: /vault/tls/ca.pem
+      # per cluster configs
+      - source: usil-pki-bundle
+        target: /vault/tls/bundle.pem
+    secrets:
+      # shared secrets
+      - source: vault-enterprise-license
+        target: /vault/license/vault.hclic
+      # per cluster secrets
+      - source: usil-pki-key
+        target: /vault/tls/key.pem
+    cap_add: *vault-capabilities
+
+  # perf secondary dr - austin, texas
+  ustx:
+    image: ${VAULT_IMAGE}:${VAULT_VERSION}
+    command: *vault-command
+    restart: unless-stopped
+    deploy: *vault-servers
+    networks: *vault-flat
+    ports: *vault-ports
+    environment:
+      <<: *vault-env-vars
+      CLUSTER_CONTEXT: ustx
+    configs:
+      # shared configs
+      - source: vault-tpl-config
+        target: /tmp/vault.tpl.hcl
+      - source: root-ca
+        target: /vault/tls/ca.pem
+      # per cluster configs
+      - source: ustx-pki-bundle
+        target: /vault/tls/bundle.pem
+    secrets:
+      # shared secrets
+      - source: vault-enterprise-license
+        target: /vault/license/vault.hclic
+      # per cluster secrets
+      - source: ustx-pki-key
+        target: /vault/tls/key.pem
+    cap_add: *vault-capabilities
+
+
+  # the haproxy image defaults to haproxy/haproxy for user and group. /tmp is writable
+  # so using that directory for config as its of little significance in this demo/test env.
+
+  # load balancers
+  lb-usca:
+    image: ${LB_IMAGE}:${LB_VERSION}
+    command: &lb-command
+      - /bin/sh
+      - -c
+      - |
+        sed "s|{{DOMAIN}}|$$DOMAIN|g ; s|{{CLUSTER_CONTEXT}}|$$CLUSTER_CONTEXT|g" /tmp/haproxy.tpl.cfg > /tmp/haproxy.cfg
+        haproxy -W -db -f /tmp/haproxy.cfg
+    restart: unless-stopped
+    networks: *vault-flat
+    ports: &lb-ports
+      - 443/tcp
+      - 9000/tcp
+      - 8443/tcp # staticly map to 8443 to test read endpoint w/ port-forwarding
+    environment: &lb-env-vars
+      DOMAIN: example.internal
+      CLUSTER_CONTEXT: usca
+    configs: &lb-configs
+      - source: haproxy-tpl-config
+        target: /tmp/haproxy.tpl.cfg
+      - source: root-ca
+        target: /tmp/ca.pem
+
+  lb-usny:
+    image: ${LB_IMAGE}:${LB_VERSION}
+    command: *lb-command
+    restart: unless-stopped
+    networks: *vault-flat
+    ports: *lb-ports
+    environment:
+      <<: *lb-env-vars
+      CLUSTER_CONTEXT: usny
+    configs: *lb-configs
+
+  lb-usil:
+    image: ${LB_IMAGE}:${LB_VERSION}
+    command: *lb-command
+    restart: unless-stopped
+    networks: *vault-flat
+    ports: *lb-ports
+    environment:
+      <<: *lb-env-vars
+      CLUSTER_CONTEXT: usil
+    configs: *lb-configs
+
+  lb-ustx:
+    image: ${LB_IMAGE}:${LB_VERSION}
+    command: *lb-command
+    restart: unless-stopped
+    networks: *vault-flat
+    ports: *lb-ports
+    environment:
+      <<: *lb-env-vars
+      CLUSTER_CONTEXT: ustx
+    configs: *lb-configs
+
+networks:
+  vault:
+    name: vault-flat
+
+configs:
+  # shared configs
+  vault-tpl-config:
+    file: ./vault.tpl.hcl
+  root-ca:
+    file: ./tls/root-ca/dev-root-ca.pem
+  haproxy-tpl-config:
+    file: ./haproxy.tpl.cfg
+  # per cluster configs
+  usca-pki-bundle:
+    file: ./tls/usca/bundle.pem
+  usny-pki-bundle:
+    file: ./tls/usny/bundle.pem
+  usil-pki-bundle:
+    file: ./tls/usil/bundle.pem
+  ustx-pki-bundle:
+    file: ./tls/ustx/bundle.pem
+
+secrets:
+  # shared secrets
+  vault-enterprise-license:
+    file: ${VAULT_LICENSE_PATH}
+  # per cluster secrets
+  usca-pki-key:
+    file: ./tls/usca/key.pem
+  usny-pki-key:
+    file: ./tls/usny/key.pem
+  usil-pki-key:
+    file: ./tls/usil/key.pem
+  ustx-pki-key:
+    file: ./tls/ustx/key.pem
