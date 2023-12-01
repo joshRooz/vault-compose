@@ -2,8 +2,8 @@
 set -euo pipefail
 
 create_root_ca_conf() {
-  local cnf_file="${1:=./root-ca.cnf}"
-  local path="${2:=./root-ca}"
+  local cnf_file="${1:=../tls/root-ca.cnf}"
+  local path="${2:=../tls/root-ca}"
 
   cat - <<-EOF > "$cnf_file"
 	[default]
@@ -63,8 +63,8 @@ create_root_ca_conf() {
 
 create_signing_ca_confg() {
   local cluster="${1:=dummy}"
-  local cnf_file="${2:=./${cluster}-signing-ca.cnf}"
-  local path="${3:=./${cluster}-signing-ca}"
+  local cnf_file="${2:=../tls/${cluster}-signing-ca.cnf}"
+  local path="${3:=../tls/${cluster}-signing-ca}"
 
   # Create ICA configuration file
   cat - <<-EOF > "$cnf_file"
@@ -77,7 +77,7 @@ create_signing_ca_confg() {
 	commonName         = Signing CA - ${cluster}
 	
 	[ca_default]
-	home               = ./${cluster}/signing-ca
+	home               = $path
 	database           = \$home/db/index
 	serial             = \$home/db/serial
 	crl_dir            = \$home/crl
@@ -124,64 +124,67 @@ create_signing_ca_confg() {
   touch $path/db/index
 }
 
+echo "generating pki"
 
-## Create CA key and 90-day cert
-root_config=root-ca.cnf ; root_path=./root-ca
+(
+  ## Create CA key and 90-day cert
+  root_config=../tls/root-ca.cnf ; root_path=../tls/root-ca
 
-test -d $root_path || mkdir -p $root_path
-create_root_ca_conf $root_config $root_path
-openssl req -new \
-  -config $root_config \
-  -extensions ca_ext \
-  -x509 \
-  -days 90 \
-  -nodes \
-  -out $root_path/dev-root-ca.pem \
-  -keyout $root_path/dev-root-ca-key.pem
-
-
-for cluster in usca usny usil ustx; do
-  # Create Int CA and 60-day cert
-  sub_config=signing-ca.cnf
-	sub_path=$cluster/signing-ca
-
-  test -d $sub_path || mkdir -p $sub_path
-  create_signing_ca_confg $cluster $sub_config $sub_path
+  test -d $root_path || mkdir -p $root_path
+  create_root_ca_conf $root_config $root_path
   openssl req -new \
-    -config $sub_config \
-    -nodes \
-    -out "$sub_path/signing-ca.csr" \
-    -keyout "$sub_path/signing-ca-key.pem"
-  
-  openssl ca -batch \
     -config $root_config \
-    -extensions sub_ca_ext \
-    -days 60 \
-    -in "$sub_path/signing-ca.csr" \
-    -out "$sub_path/signing-ca.pem" \
-    -notext
-  
-  # Create and issue 30-day server cert
-  # -addext "subjectAltName=DNS:read.vault.$cluster.example.internal,DNS:vault.$cluster.example.internal,DNS:vault.server.$cluster.example.internal,DNS:vault-$cluster-X" \
-  openssl req -new \
-    -config $sub_config \
+    -extensions ca_ext \
+    -x509 \
+    -days 90 \
     -nodes \
-    -subj "/O=Vault Compose/CN=vault.server.$cluster.example.internal" \
-    -addext "subjectAltName=DNS:read.lb-$cluster-1,DNS:lb-$cluster-1,DNS:vault.server.$cluster.example.internal,DNS:*" \
-    -out "$cluster/cert.csr" \
-    -keyout "$cluster/key.pem"
-  
-  openssl ca -batch \
-    -config $sub_config \
-    -extensions server_ext \
-    -days 30 \
-    -in "$cluster/cert.csr" \
-    -out "$cluster/cert.pem" \
-    -notext
-  
-  # Create bundle and copy CA into volume that will be mounted to the server instances
-  cat "$cluster/cert.pem" "$sub_path/signing-ca.pem" > "$cluster/bundle.pem"
-  
-  # Verify certificate chain
-  openssl verify -CAfile $root_path/dev-root-ca.pem -untrusted $cluster/bundle.pem $cluster/cert.pem
-done
+    -out $root_path/dev-root-ca.pem \
+    -keyout $root_path/dev-root-ca-key.pem
+
+
+  for cluster in usca usny usil ustx; do
+    # Create Int CA and 60-day cert
+    sub_config=../tls/signing-ca.cnf
+    sub_path=../tls/$cluster/signing-ca
+
+    test -d $sub_path || mkdir -p $sub_path
+    create_signing_ca_confg $cluster $sub_config $sub_path
+    openssl req -new \
+      -config $sub_config \
+      -nodes \
+      -out "$sub_path/signing-ca.csr" \
+      -keyout "$sub_path/signing-ca-key.pem"
+
+    openssl ca -batch \
+      -config $root_config \
+      -extensions sub_ca_ext \
+      -days 60 \
+      -in "$sub_path/signing-ca.csr" \
+      -out "$sub_path/signing-ca.pem" \
+      -notext
+
+    # Create and issue 30-day server cert
+    # -addext "subjectAltName=DNS:read.vault.$cluster.example.internal,DNS:vault.$cluster.example.internal,DNS:vault.server.$cluster.example.internal,DNS:vault-$cluster-X" \
+    openssl req -new \
+      -config $sub_config \
+      -nodes \
+      -subj "/O=Vault Compose/CN=vault.server.$cluster.example.internal" \
+      -addext "subjectAltName=DNS:read.vault-lb-$cluster-1,DNS:vault-lb-$cluster-1,DNS:vault.server.$cluster.example.internal,DNS:*" \
+      -out "../tls/$cluster/cert.csr" \
+      -keyout "../tls/$cluster/key.pem"
+
+    openssl ca -batch \
+      -config $sub_config \
+      -extensions server_ext \
+      -days 30 \
+      -in "../tls/$cluster/cert.csr" \
+      -out "../tls/$cluster/cert.pem" \
+      -notext
+
+    # Create bundle and copy CA into volume that will be mounted to the server instances
+    cat "../tls/$cluster/cert.pem" "$sub_path/signing-ca.pem" > "../tls/$cluster/bundle.pem"
+
+    # Verify certificate chain
+    openssl verify -CAfile $root_path/dev-root-ca.pem -untrusted ../tls/$cluster/bundle.pem ../tls/$cluster/cert.pem
+  done
+) &> /tmp/init-pki.out
