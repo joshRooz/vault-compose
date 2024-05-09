@@ -164,12 +164,13 @@ echo "generating pki"
       -notext
 
     # Create and issue 30-day server cert
-    # -addext "subjectAltName=DNS:read.vault.$cluster.example.internal,DNS:vault.$cluster.example.internal,DNS:vault.server.$cluster.example.internal,DNS:vault-$cluster-X" \
+    # NOTE: Use of 'DNS:*' is a cut corner related to Docker DNS which does not allow for a custom domain to my knowledge
+    # -addext "subjectAltName=DNS:active.vault.$cluster.example.internal,DNS:read.vault.$cluster.example.internal,DNS:vault.$cluster.example.internal,DNS:vault.server.$cluster.example.internal,DNS:vault-$cluster-X" \
     openssl req -new \
       -config $sub_config \
       -nodes \
       -subj "/O=Vault Compose/CN=vault.server.$cluster.example.internal" \
-      -addext "subjectAltName=DNS:read.vault-lb-$cluster-1,DNS:vault-lb-$cluster-1,DNS:vault.server.$cluster.example.internal,DNS:*" \
+      -addext "subjectAltName=DNS:active.vault-lb-$cluster-1,DNS:read.vault-lb-$cluster-1,DNS:vault-lb-$cluster-1,DNS:vault.server.$cluster.example.internal,DNS:*,IP:127.0.0.1" \
       -out "../tls/$cluster/cert.csr" \
       -keyout "../tls/$cluster/key.pem"
 

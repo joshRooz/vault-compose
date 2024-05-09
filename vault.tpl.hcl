@@ -9,6 +9,12 @@ listener "tcp" {
   tls_key_file                       = "/vault/tls/key.pem"
   tls_disable_client_certs           = true
   tls_require_and_verify_client_cert = false
+
+  proxy_protocol_behavior         = "allow_authorized"
+  proxy_protocol_authorized_addrs = "{{PROXY_ADDR}}"
+}
+replication {
+  allow_forwarding_via_token = "new_token"
 }
 seal "shamir" {}
 storage "raft" {

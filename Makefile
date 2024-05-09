@@ -11,6 +11,11 @@ down: compose-down delete-secrets delete-recovery-files
 show-ports:
 	docker ps --format=json | jq -sr '[ .[] | [.Names,.ID,.Ports] ] | sort | .[] | @tsv'
 
+show-network:
+	docker inspect vault-flat | jq -r '[.[].Containers | .[] | [.Name,.IPv4Address]] | sort | .[] | @tsv'
+
+show-ports-lb:
+	docker ps --format=json | jq -sr '[ .[] | select(.Names | contains("-lb-")) | [.Names,.ID,.Ports] ] | sort | .[] | @tsv'
 
 # setup rules
 create-pki:

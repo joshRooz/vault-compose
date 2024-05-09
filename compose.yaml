@@ -11,7 +11,8 @@ services:
       - /bin/sh
       - -c
       - |
-        sed "s|{{HOSTNAME}}|$$HOSTNAME|g ; s|{{CLUSTER_CONTEXT}}|$$CLUSTER_CONTEXT|g ; s|{{DOMAIN}}|$$DOMAIN|g" /tmp/vault.tpl.hcl > /vault/config/vault.hcl
+        until PROXY_ADDR=$(nslookup -type=a lb-$$CLUSTER_CONTEXT | grep -Eo "Address:.*(\d+\.){3}(\d+)$" | grep -Eo "(\d+\.){3}(\d+)") ; do sleep 1 ; done
+        sed "s|{{HOSTNAME}}|$$HOSTNAME|g ; s|{{CLUSTER_CONTEXT}}|$$CLUSTER_CONTEXT|g ; s|{{DOMAIN}}|$$DOMAIN|g ; s|{{PROXY_ADDR}}|$$PROXY_ADDR|g" /tmp/vault.tpl.hcl > /vault/config/vault.hcl
         /bin/vault server -config=/vault/config #-log-level=debug
     restart: unless-stopped
     deploy: &vault-servers
@@ -50,7 +51,8 @@ services:
       - /bin/sh
       - -c
       - |
-        sed "s|{{HOSTNAME}}|$$HOSTNAME|g ; s|{{CLUSTER_CONTEXT}}|$$CLUSTER_CONTEXT|g ; s|{{DOMAIN}}|$$DOMAIN|g ; /^  node_id = /a\  retry_join_as_non_voter = true" /tmp/vault.tpl.hcl > /vault/config/vault.hcl
+        until PROXY_ADDR=$(nslookup -type=a lb-$$CLUSTER_CONTEXT | grep -Eo "Address:.*(\d+\.){3}(\d+)$" | grep -Eo "(\d+\.){3}(\d+)") ; do sleep 1 ; done
+        sed "s|{{HOSTNAME}}|$$HOSTNAME|g ; s|{{CLUSTER_CONTEXT}}|$$CLUSTER_CONTEXT|g ; s|{{DOMAIN}}|$$DOMAIN|g ; s|{{PROXY_ADDR}}|$$PROXY_ADDR|g ; /^  node_id = /a\  retry_join_as_non_voter = true" /tmp/vault.tpl.hcl > /vault/config/vault.hcl
         /bin/vault server -config=/vault/config #-log-level=debug
     restart: unless-stopped
     deploy: *vault-servers
