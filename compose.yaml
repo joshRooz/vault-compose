@@ -168,7 +168,6 @@ services:
     ports: &lb-ports
       - 443/tcp
       - 9000/tcp
-      - 8443/tcp # staticly map to 8443 to test read endpoint w/ port-forwarding
     environment: &lb-env-vars
       DOMAIN: example.internal
       CLUSTER_CONTEXT: usca

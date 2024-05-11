@@ -1,0 +1,135 @@
+version: '3'
+
+env:
+  PRIMARY: usca
+  DR_PRIMARY: usil
+  PERF_REPLICA: usny
+  DR_PERF_REPLICA: ustx  # DR for the Performance Replica
+
+  COMPOSE_PROJECT: vault  # yq .name compose.yaml
+
+tasks:
+  up:
+    cmds:
+      - task: create-pki
+      - task: compose-up
+      - task: init-primary
+      - task: init-perf-secondaries
+      - task: init-dr-secondaries
+
+  down:
+    deps: [compose-down, delete-secrets, delete-recovery-files]  # reminder deps run in parallel
+    silent: true
+
+
+
+  # helpers
+  show-ports:
+    cmds:
+      - docker ps --format=json | jq -sr '[ .[] | [.Names,.ID,.Ports] ] | sort | .[] | @tsv'
+
+  show-ports-lb:
+    cmds:
+      - docker ps --format=json | jq -sr '[ .[] | select(.Names | contains("-lb-")) | [.Names,.ID,.Ports] ] | sort | .[] | @tsv'
+
+  show-network:
+    cmds:
+      - docker inspect {{.COMPOSE_PROJECT}}-flat | jq -r '[.[].Containers | .[] | [.Name,.IPv4Address]] | sort | .[] | @tsv'
+
+
+
+  # simulation rules
+  network-disrupt: # real 0m3.528s
+    label: "{{.TASK}}: primary <-> perf-replica"
+    dir: scripts
+    cmds:
+      # primary --x perf-replica
+      - >
+        ./network-segmentation.sh -m deny
+        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.PERF_REPLICA $i}}{{end}}
+        {{range $i := list 1 2 3}}{{printf "-s %s-%s-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
+        {{range $i := list 1 2 3}}{{printf "-s %s-%sps-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
+      # perf-replica --x primary
+      - >
+        ./network-segmentation.sh -m deny
+        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
+        {{range $i := list 1 2 3}}{{printf "-i %s-%sps-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
+        {{range $i := list 1 2 3}}{{printf "-s %s-%s-%v "  $.COMPOSE_PROJECT $.PERF_REPLICA $i}}{{end}}
+
+  network-repair:
+    label: "{{.TASK}}: primary <-> perf-replica"
+    dir: scripts
+    cmds:
+      # primary --> perf-replica
+      - >
+        ./network-segmentation.sh -m allow
+        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.PERF_REPLICA $i}}{{end}}
+        {{range $i := list 1 2 3}}{{printf "-s %s-%s-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
+        {{range $i := list 1 2 3}}{{printf "-s %s-%sps-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
+      # perf-replica --> primary
+      - >
+        ./network-segmentation.sh -m allow
+        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
+        {{range $i := list 1 2 3}}{{printf "-i %s-%sps-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
+        {{range $i := list 1 2 3}}{{printf "-s %s-%s-%v "  $.COMPOSE_PROJECT $.PERF_REPLICA $i}}{{end}}
+
+
+
+
+  # setup rules
+  create-pki:
+    dir: scripts
+    cmds:
+      - ./init-pki.sh
+
+  compose-up:
+    cmds:
+      - docker compose up -d
+
+  init-primary:
+    dir: scripts
+    cmds:  # usage init-primary.sh -i <primary-instance>... -i <primary-perf-standby-instance>...
+      - >
+        ./init-primary.sh
+        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
+        {{range $i := list 1 2 3}}{{printf "-i %s-%sps-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
+
+  init-perf-secondaries:
+    dir: scripts
+    cmds:  # usage init-perf-replica.sh -i <secondary-instance>... -r <cluster-context> -p <primary-instance>
+      - >
+        ./init-perf-replica.sh
+        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.PERF_REPLICA $i}}{{end}}
+        {{printf "-r %s -p %s-%s-%v"  $.PERF_REPLICA $.COMPOSE_PROJECT $.PRIMARY 1 }}
+
+  init-dr-secondaries:
+    dir: scripts
+    cmds:  # usage init-dr-secondary.sh -i <secondary-instance>... -r <cluster-context> -p <primary-instance>
+      - >
+        ./init-dr-secondary.sh
+        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.DR_PRIMARY $i}}{{end}}
+        {{printf "-r %s -p %s-%s-%v"  $.DR_PRIMARY $.COMPOSE_PROJECT $.PRIMARY 1 }}
+      - >
+        ./init-dr-secondary.sh
+        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.DR_PERF_REPLICA $i}}{{end}}
+        {{printf "-r %s -p %s-%s-%v"  $.DR_PERF_REPLICA $.COMPOSE_PROJECT $.PERF_REPLICA 1 }}
+
+
+
+  # clean-up rules
+  compose-down:
+    cmds:
+      - docker compose down
+      - cmd: docker volume prune -f >/dev/null
+        ignore_error: true
+
+  delete-secrets:
+    cmds:
+      - cmd: rm -r tls secrets/init.json
+        ignore_error: true
+
+  delete-recovery-files:
+    cmds:
+      - cmd: rm -r secrets/init-backup.json snapshots
+        ignore_error: true
+
