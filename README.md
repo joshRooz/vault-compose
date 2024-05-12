@@ -1,5 +1,29 @@
 # Vault Compose - Replication
 
+## Cluster Topology
+
+Four clusters - with three instances each - are deployed to a flat network. The primary cluster has an additional compose service (three instances) for horizontal read scaling using performance standbys. An HAProxy instance fronts each cluster, with dynamic ports forwarded for the Vault API and HAProxy statistics. Cluster replication does not target HAProxy.
+
+The HAProxy configuration contains a commented KMIP frontend and backend as well.
+
+- **USCA** - San Francisco, CA
+- **USNY** - New York, NY
+- **USIL** - Chicago, IL
+- **USTX** - Austin, TX
+
+### Steady State
+- *Primary* - **USCA**
+- *Perf Secondary* - **USNY**
+- *DR Secondary* - **USIL**
+- *DR Secondary [off Perf Secondary]* - **USTX**
+
+![cluster-topology-image](docs/topology.png)
+
+### DR Failover
+Failover **USCA** to **USIL**
+
+\#TODO
+
 ## Usage
 ```sh
 task up
@@ -35,24 +59,3 @@ Taskfile is the successor to Make in this repository. Since Make is commonly ava
 - Taskfile calls role specific scripts - `init-primary.sh`, `init-perf-replica.sh`, `init-dr-secondary.sh`
 - Taskfile also orchestrates failover scenarios using - `network-segmentation.sh`
 - Makefile uses a single, hardcoded script - `init-steady-state.sh`
-
-## Cluster Topology
-
-Four clusters are deployed:
-- **USCA** - San Francisco, CA
-- **USNY** - New York, NY
-- **USIL** - Chicago, IL
-- **USTX** - Austin, TX
-
-### Steady State
-- *Primary* - **USCA**
-- *Perf Secondary* - **USNY**
-- *DR Secondary* - **USIL**
-- *DR Secondary [off Perf Secondary]* - **USTX**
-
-![cluster-topology-image](docs/topology.png)
-
-### DR Failover
-Failover **USCA** to **USIL**
-
-\#TODO
