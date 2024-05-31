@@ -1,8 +1,9 @@
-# Vault Compose - Replication
+# Vault Compose
 
 ## Cluster Topology
 
-Four clusters - with three instances each - are deployed to a flat network. The primary cluster has an additional compose service (three instances) for horizontal read scaling using performance standbys. An HAProxy instance fronts each cluster, with dynamic ports forwarded for the Vault API and HAProxy statistics. Cluster replication does not target HAProxy.
+Four clusters, running in logical redundancy zones (1, 2, and 3), are deployed to a flat network. The primary cluster has six instances as the reference architecture states. To minimize weight the remaining clusters are set to 3 replicas, but can scale all the same. An HAProxy instance fronts each cluster, with dynamic ports forwarded for the Vault API and HAProxy statistics.
+
 
 The HAProxy configuration contains a commented KMIP frontend and backend as well.
 
@@ -18,11 +19,6 @@ The HAProxy configuration contains a commented KMIP frontend and backend as well
 - *DR Secondary [off Perf Secondary]* - **USTX**
 
 ![cluster-topology-image](docs/topology.png)
-
-### DR Failover
-Failover **USCA** to **USIL**
-
-\#TODO
 
 ## Usage
 ```sh
@@ -62,25 +58,25 @@ task down
 
 ### Walk-through
 
-> **NOTE**: Order is very important in practice (and this is *not* the right order), but here we are throwing caution to the wind.
+> **NOTE**: Cluster upgrade order is very important in practice (and this is *not* the right order), but here we are throwing caution to the wind.
+>           For more information checkout: https://developer.hashicorp.com/vault/docs/upgrading#enterprise-replication-installations
 
 1. Add the following service to the `compose.yaml` file. This mimics scaling up before decommissioning the existing instances. Notice the `CLUSTER_VERSION` is incremented to `0.0.2`.
     ```yaml
-    # primary
-      usca-v2:
-        image: ${VAULT_IMAGE}:${VAULT_VERSION}
-        command: *vault-command
-        restart: unless-stopped
-        deploy:
-          replicas: 6
-        networks: *vault-flat
-        ports: *vault-ports
-        environment:
-          <<: *vault-env-vars
-          CLUSTER_VERSION: 0.0.2
-        configs: *usca-configs
-        secrets: *usca-secrets
-        cap_add: *vault-capabilities
+    usca-v2:
+      image: ${VAULT_IMAGE}:${VAULT_VERSION}
+      command: *vault-command
+      restart: unless-stopped
+      deploy:
+        replicas: 6
+      networks: *vault-flat
+      ports: *vault-ports
+      environment:
+        <<: *vault-env-vars
+        CLUSTER_VERSION: 0.0.2
+      configs: *usca-configs
+      secrets: *usca-secrets
+      cap_add: *vault-capabilities
     ```
 
 1. Start the `usca-v2` service, which results in 6 new cluster "nodes."
@@ -112,7 +108,7 @@ task down
 1. Wait until the `Status` is *await-server-removal* and the `TargetVersion` is *0.0.2*.
     ```sh
     vault operator raft autopilot state --format=json | jq '.Upgrade | {Status,TargetVersion}'
-    # vault operator raft autopilot state --format=json | jq '.Servers[] | select(.UpgradeVersion == "0.0.1")' # optional. server specific information if the curious type.
+    # vault operator raft autopilot state --format=json | jq '.Servers[] | select(.UpgradeVersion == "0.0.1")' # optional. server specific information
     ```
 
 1. Terminate the previous set of instances.

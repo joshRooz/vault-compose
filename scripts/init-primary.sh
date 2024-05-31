@@ -2,34 +2,41 @@
 set -oeu pipefail
 
 usage() { 
-  echo "Usage: $0 -i <instance>
+  echo "Usage: $0 -p <primary_context> -c <compose_project>
 
-    -i  container name(s) for the cluster
+    -p  cluster context for the primary
+    -c  docker compose project name
 
-    Example: 1 cluster instances
-    $0 -i vaulta01 -i vaulta02 -i vaulta03" 1>&2
+    Example: primary 'a', and compose project 'vault'
+    $0 -p a -c vault" 1>&2
 }
 
 # not checking for duplicates - we close our eyes and hope for the best in this demo
-while getopts "i:" options ; do
+while getopts "p:c:" options ; do
   case "${options}" in
-    i) instances+=("${OPTARG}") ;;
+    p) id="${OPTARG}"  ;;
+    c) project="${OPTARG}" ;;
     *) usage && exit 1 ;;
   esac
 done
 
+SCRIPT_PATH="$(realpath "$0")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+source "$SCRIPT_DIR/common.sh"
 
-# initialize and unseal primary vault cluster + non-voting standby's
+
+#---------------------------------------------------------------------
 echo "# initialize and unseal primary vault cluster + non-voting standby's"
+instances=()
+get_instances instances
 export VAULT_SKIP_VERIFY=true
 export VAULT_ADDR="https://localhost:$(docker inspect "${instances[0]}" | jq -r '.[].NetworkSettings.Ports."8200/tcp".[].HostPort')"
+mkdir -p ../secrets
 vault operator init -format=json -key-shares=1 -key-threshold=1 > ../secrets/init.json
 vault operator unseal "$(jq -r .unseal_keys_b64[0] ../secrets/init.json)"
 
-sleep 5 #? specific endpoint to gaurantee no transient failure due to #too-soon
 for i in "${instances[@]:1}" ; do
-  VAULT_ADDR="https://localhost:$(docker inspect $i | jq -r '.[].NetworkSettings.Ports."8200/tcp".[].HostPort')" \
-    vault operator unseal "$(jq -r .unseal_keys_b64[0] ../secrets/init.json)" >/dev/null &
+  unseal_with_retry "$i" &
 done
 
 export VAULT_TOKEN="$(jq -r .root_token ../secrets/init.json)"

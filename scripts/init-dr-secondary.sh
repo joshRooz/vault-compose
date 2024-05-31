@@ -2,35 +2,42 @@
 set -oeu pipefail
 
 usage() { 
-  echo "Usage: $0 -i <instance> -r <secondary_id> -p <primary_instance>
+  echo "Usage: $0 -r <secondary_context> -p <primary_context> -c <compose_project>
 
-    -i  container name(s) for the dr secondary cluster
-    -r  dr secondary id
+    -r  cluster context for the dr secondary cluster
     -p  container name for the primary cluster
+    -c  docker compose project name
 
-    Example: 3 secondary cluster instances, cluster id, and a primary instance
-    $0 -i vaultb01 -i vaultb02 -i vaultb03 -r foo -p vaulta01" 1>&2
+    Example: dr 'c', primary 'a', and compose project 'vault'
+    $0 -r c -p a -p vault" 1>&2
 }
 
 # not checking for duplicates - we close our eyes and hope for the best in this demo
-while getopts "i:r:p:" options ; do
+while getopts "r:p:c:" options ; do
   case "${options}" in
-    i) instances+=("${OPTARG}") ;;
     r) id="${OPTARG}" ;;
     p) primary="${OPTARG}" ;;
+    c) project="${OPTARG}" ;;
     *) usage && exit 1 ;;
   esac
 done
 
+SCRIPT_PATH="$(realpath "$0")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+source "$SCRIPT_DIR/common.sh"
+
+
 #---------------------------------------------------------------------
 echo "# initializing dr secondary - $id"
+instances=()
+get_instances instances
 export VAULT_SKIP_VERIFY=true
 export VAULT_ADDR="https://localhost:$(docker inspect "${instances[0]}" | jq -r '.[].NetworkSettings.Ports."8200/tcp".[].HostPort')"
 vault operator init -format=json -key-shares=1 -key-threshold=1 > "/tmp/$id.json"
 vault operator unseal "$(jq -r .unseal_keys_b64[0] "/tmp/$id.json")"
 
 # dr primary - auth
-dp_addr="https://localhost:$(docker inspect "${primary}" | jq -r '.[].NetworkSettings.Ports."8200/tcp".[].HostPort')"
+dp_addr="https://localhost:$(docker inspect "${project}-${primary}-1" | jq -r '.[].NetworkSettings.Ports."8200/tcp".[].HostPort')"
 dp_token=$(VAULT_ADDR="$dp_addr" vault login -token-only -method=userpass username=admin password=admin ttl=5m)
 
 # dr primary - check and enable replication

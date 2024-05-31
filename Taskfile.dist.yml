@@ -44,34 +44,18 @@ tasks:
     dir: scripts
     cmds:
       # primary --x perf-replica
-      - >
-        ./network-segmentation.sh -m deny
-        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.PERF_REPLICA $i}}{{end}}
-        {{range $i := list 1 2 3}}{{printf "-s %s-%s-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
-        {{range $i := list 1 2 3}}{{printf "-s %s-%sps-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
+      - ./network-segmentation.sh -m deny -i {{.PERF_REPLICA}} -s {{.PRIMARY}} -c {{.COMPOSE_PROJECT}}
       # perf-replica --x primary
-      - >
-        ./network-segmentation.sh -m deny
-        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
-        {{range $i := list 1 2 3}}{{printf "-i %s-%sps-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
-        {{range $i := list 1 2 3}}{{printf "-s %s-%s-%v "  $.COMPOSE_PROJECT $.PERF_REPLICA $i}}{{end}}
+      - ./network-segmentation.sh -m deny -i {{.PRIMARY}} -s {{.PERF_REPLICA}} -c {{.COMPOSE_PROJECT}}
 
   network-repair:
     label: "{{.TASK}}: primary <-> perf-replica"
     dir: scripts
     cmds:
       # primary --> perf-replica
-      - >
-        ./network-segmentation.sh -m allow
-        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.PERF_REPLICA $i}}{{end}}
-        {{range $i := list 1 2 3}}{{printf "-s %s-%s-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
-        {{range $i := list 1 2 3}}{{printf "-s %s-%sps-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
+      - ./network-segmentation.sh -m allow -i {{.PERF_REPLICA}} -s {{.PRIMARY}} -c {{.COMPOSE_PROJECT}}
       # perf-replica --> primary
-      - >
-        ./network-segmentation.sh -m allow
-        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
-        {{range $i := list 1 2 3}}{{printf "-i %s-%sps-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
-        {{range $i := list 1 2 3}}{{printf "-s %s-%s-%v "  $.COMPOSE_PROJECT $.PERF_REPLICA $i}}{{end}}
+      - ./network-segmentation.sh -m allow -i {{.PRIMARY}} -s {{.PERF_REPLICA}} -c {{.COMPOSE_PROJECT}}
 
 
 
@@ -88,47 +72,48 @@ tasks:
 
   init-primary:
     dir: scripts
-    cmds:  # usage init-primary.sh -i <primary-instance>... -i <primary-perf-standby-instance>...
-      - >
-        ./init-primary.sh
-        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
-        {{range $i := list 1 2 3}}{{printf "-i %s-%sps-%v "  $.COMPOSE_PROJECT $.PRIMARY $i}}{{end}}
+    cmds:
+      - ./init-primary.sh -p {{.PRIMARY}} -c {{.COMPOSE_PROJECT}}
 
   init-perf-secondaries:
     dir: scripts
-    cmds:  # usage init-perf-replica.sh -i <secondary-instance>... -r <cluster-context> -p <primary-instance>
-      - >
-        ./init-perf-replica.sh
-        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.PERF_REPLICA $i}}{{end}}
-        {{printf "-r %s -p %s-%s-%v"  $.PERF_REPLICA $.COMPOSE_PROJECT $.PRIMARY 1 }}
+    cmds:
+      - ./init-perf-replica.sh -r {{.PERF_REPLICA}} -p {{.PRIMARY}} -c {{.COMPOSE_PROJECT}}
 
+  # runs in parallel; as such session output will not be sequential
   init-dr-secondaries:
+    deps: [init-primary-dr, init-perf-dr]
+
+  init-primary-dr:
     dir: scripts
-    cmds:  # usage init-dr-secondary.sh -i <secondary-instance>... -r <cluster-context> -p <primary-instance>
-      - >
-        ./init-dr-secondary.sh
-        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.DR_PRIMARY $i}}{{end}}
-        {{printf "-r %s -p %s-%s-%v"  $.DR_PRIMARY $.COMPOSE_PROJECT $.PRIMARY 1 }}
-      - >
-        ./init-dr-secondary.sh
-        {{range $i := list 1 2 3}}{{printf "-i %s-%s-%v "  $.COMPOSE_PROJECT $.DR_PERF_REPLICA $i}}{{end}}
-        {{printf "-r %s -p %s-%s-%v"  $.DR_PERF_REPLICA $.COMPOSE_PROJECT $.PERF_REPLICA 1 }}
+    internal: true
+    cmds:
+      - ./init-dr-secondary.sh -r {{.DR_PRIMARY}} -p {{.PRIMARY}} -c {{.COMPOSE_PROJECT}}
+
+  init-perf-dr:
+    dir: scripts
+    internal: true
+    cmds:
+      - ./init-dr-secondary.sh -r {{.DR_PERF_REPLICA}} -p {{.PERF_REPLICA}} -c {{.COMPOSE_PROJECT}}
 
 
 
   # clean-up rules
   compose-down:
+    internal: true
     cmds:
       - docker compose down
       - cmd: docker volume prune -f >/dev/null
         ignore_error: true
 
   delete-secrets:
+    internal: true
     cmds:
       - cmd: rm -r tls secrets/init.json
         ignore_error: true
 
   delete-recovery-files:
+    internal: true
     cmds:
       - cmd: rm -r secrets/init-backup.json snapshots
         ignore_error: true
