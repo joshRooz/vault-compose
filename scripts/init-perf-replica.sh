@@ -50,10 +50,17 @@ echo "# activate performance replication - $id"
 VAULT_TOKEN="$(jq -r .root_token "/tmp/$id.json")" \
   vault write sys/replication/performance/secondary/enable token="$token" ca_file=/vault/tls/ca.pem
 
+
 sleep 5 #? specific endpoint to guarantee no transient failure due to #too-soon
 for i in "${instances[@]:1}"; do
   VAULT_ADDR="https://localhost:$(docker inspect "$i" | jq -r '.[].NetworkSettings.Ports."8200/tcp".[].HostPort')" \
     vault operator unseal "$(jq -r .unseal_keys_b64[0] ../secrets/init.json)" >/dev/null &
 done
+
+# configure autopilot
+echo "# configure autopilot"
+token="$(vault login -token-only -method=userpass username=admin password=admin)"
+VAULT_TOKEN=$token vault operator raft autopilot set-config -cleanup-dead-servers=true -min-quorum=3 -dead-server-last-contact-threshold=2m # sys/storage/raft/autopilot
+VAULT_TOKEN=$token vault token revoke -self
 
 wait

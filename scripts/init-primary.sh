@@ -34,7 +34,9 @@ done
 
 export VAULT_TOKEN="$(jq -r .root_token ../secrets/init.json)"
 
-# enable audit log with log_raw as ephemeral demo/test env
+echo "# configure autopilot"
+vault operator raft autopilot set-config -cleanup-dead-servers=true -min-quorum=3 -dead-server-last-contact-threshold=2m # sys/storage/raft/autopilot
+
 echo "# enable audit log with log_raw as ephemeral demo/test env"
 vault audit enable file file_path=/var/log/vault_audit.log log_raw=true
 
@@ -52,7 +54,6 @@ path "sys/replication/dr/secondary/update-primary" { capabilities = [ "update" ]
 path "sys/storage/raft/autopilot/state" { capabilities = [ "update" , "read" ] }
 EOF
 
-unset tokens
 unset VAULT_TOKEN
 
 wait

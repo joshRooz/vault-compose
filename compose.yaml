@@ -12,11 +12,16 @@ services:
       - -c
       - |
         until PROXY_ADDR=$(nslookup -type=a lb-$$CLUSTER_CONTEXT | grep -Eo "Address:.*(\d+\.){3}(\d+)$" | grep -Eo "(\d+\.){3}(\d+)") ; do sleep 1 ; done
-        sed "s|{{HOSTNAME}}|$$HOSTNAME|g ; s|{{CLUSTER_CONTEXT}}|$$CLUSTER_CONTEXT|g ; s|{{DOMAIN}}|$$DOMAIN|g ; s|{{PROXY_ADDR}}|$$PROXY_ADDR|g" /tmp/vault.tpl.hcl > /vault/config/vault.hcl
+
+        # constructing logical redundancy zones - 1, 2, and 3. unaware of a simple way to get the index of the container in the service to do so
+        i=$(nslookup $(hostname -i) | tail -2 | rev | awk -F \. 'match($0, /[0-9]+/) {print substr($0, RSTART, RLENGTH)}')
+        AZ=$(( (i-1) % 3 +1 ))
+
+        sed "s|{{AZ}}|$$AZ|g ; s|{{CLUSTER_VERSION}}|$$CLUSTER_VERSION|g ; s|{{HOSTNAME}}|$$HOSTNAME|g ; s|{{CLUSTER_CONTEXT}}|$$CLUSTER_CONTEXT|g ; s|{{DOMAIN}}|$$DOMAIN|g ; s|{{PROXY_ADDR}}|$$PROXY_ADDR|g" /tmp/vault.tpl.hcl > /vault/config/vault.hcl
         /bin/vault server -config=/vault/config #-log-level=debug
     restart: unless-stopped
-    deploy: &vault-servers
-      replicas: 3
+    deploy:
+      replicas: 6
     networks: &vault-flat
       - vault
     ports: &vault-ports
@@ -26,6 +31,7 @@ services:
       VAULT_CACERT: /vault/tls/ca.pem
       DOMAIN: example.internal
       CLUSTER_CONTEXT: usca
+      CLUSTER_VERSION: 0.0.1
     configs: &usca-configs
       # shared configs
       - source: vault-tpl-config
@@ -45,30 +51,13 @@ services:
     cap_add: &vault-capabilities
       - IPC_LOCK
 
-  uscaps: # perf standbys
-    image: ${VAULT_IMAGE}:${VAULT_VERSION}
-    command:
-      - /bin/sh
-      - -c
-      - |
-        until PROXY_ADDR=$(nslookup -type=a lb-$$CLUSTER_CONTEXT | grep -Eo "Address:.*(\d+\.){3}(\d+)$" | grep -Eo "(\d+\.){3}(\d+)") ; do sleep 1 ; done
-        sed "s|{{HOSTNAME}}|$$HOSTNAME|g ; s|{{CLUSTER_CONTEXT}}|$$CLUSTER_CONTEXT|g ; s|{{DOMAIN}}|$$DOMAIN|g ; s|{{PROXY_ADDR}}|$$PROXY_ADDR|g ; /^  node_id = /a\  retry_join_as_non_voter = true" /tmp/vault.tpl.hcl > /vault/config/vault.hcl
-        /bin/vault server -config=/vault/config #-log-level=debug
-    restart: unless-stopped
-    deploy: *vault-servers
-    networks: *vault-flat
-    ports: *vault-ports
-    environment: *vault-env-vars
-    configs: *usca-configs
-    secrets: *usca-secrets
-    cap_add: *vault-capabilities
-
   # perf secondary - new york, new york
   usny:
     image: ${VAULT_IMAGE}:${VAULT_VERSION}
     command: *vault-command
     restart: unless-stopped
-    deploy: *vault-servers
+    deploy:  &vault-servers
+      replicas: 3
     networks: *vault-flat
     ports: *vault-ports
     environment:

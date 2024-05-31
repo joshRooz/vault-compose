@@ -46,6 +46,87 @@ vault operator raft list-peers
 task down
 ```
 
+## Auto Upgrades
+
+### High Level Steps
+1. Develop and test desired change (eg: Vault version, underlying AMI - OS release or configuration, etc.)
+1. Increment the cluster version (ie: `storage.autopilot_upgrade_version`) in the Vault configuration (`CLUSTER_VERSION` environment variable below)
+1. *Scale out* the deployment instances by a factor of 2 (eg: 6 to 12). If the previous upgrade version was `0.0.1` with six instances, trigger a new deployment of the same size with the new tag (eg: `0.0.2`).
+1. If not using auto-unseal, unseal the new deployment instances.
+1. Autopilot recognizes the new version's tag and they will join the cluster as non-voters.
+1. Once autopilot detects that the count of nodes on the new version equals or exceeds older version nodes, it begins promoting the new nodes to voters and demoting the older version nodes to non-voters one-by-one.
+1. The raft leader (and active node) will be transfered, then demoted last.
+1. A status of `await-server-removal` means that the demoted instances can be terminated.
+1. Autopilot will clean-up the dead instances according to the configuration.
+
+
+### Walk-through
+
+> **NOTE**: Order is very important in practice (and this is *not* the right order), but here we are throwing caution to the wind.
+
+1. Add the following service to the `compose.yaml` file. This mimics scaling up before decommissioning the existing instances. Notice the `CLUSTER_VERSION` is incremented to `0.0.2`.
+    ```yaml
+    # primary
+      usca-v2:
+        image: ${VAULT_IMAGE}:${VAULT_VERSION}
+        command: *vault-command
+        restart: unless-stopped
+        deploy:
+          replicas: 6
+        networks: *vault-flat
+        ports: *vault-ports
+        environment:
+          <<: *vault-env-vars
+          CLUSTER_VERSION: 0.0.2
+        configs: *usca-configs
+        secrets: *usca-secrets
+        cap_add: *vault-capabilities
+    ```
+
+1. Start the `usca-v2` service, which results in 6 new cluster "nodes."
+    ```sh
+    docker compose up -d
+    ```
+
+1. In a second session watch the autopilot configuration.
+    ```sh
+    #tmux  # optional. split into two horizontal panes with ctrl+b + double-quote
+    watch 'vault operator members  ; echo ; vault operator raft list-peers'
+    ```
+
+1. Unseal the new nodes in the first session.
+    ```sh
+    pushd scripts
+    . ./common.sh
+
+    i="$(docker ps --filter "name=vault-usca-v2" --format "{{.Names}}" | sort) @"
+    read -d "@" -ra instances <<<"$i"
+    for i in "${instances[@]}" ; do
+      unseal_with_retry "$i" &
+    done
+    wait
+
+    popd
+    ```
+
+1. Wait until the `Status` is *await-server-removal* and the `TargetVersion` is *0.0.2*.
+    ```sh
+    vault operator raft autopilot state --format=json | jq '.Upgrade | {Status,TargetVersion}'
+    # vault operator raft autopilot state --format=json | jq '.Servers[] | select(.UpgradeVersion == "0.0.1")' # optional. server specific information if the curious type.
+    ```
+
+1. Terminate the previous set of instances.
+    ```sh
+    # in session one -
+    docker compose rm -sf usca
+    ```
+
+1. Autopilot will recognize the instances have been terminated and they will drop-off the members list, then peers lists. At that point autopilot status will become *idle*.
+    ```sh
+    vault operator raft autopilot state --format=json | jq '.Upgrade.Status'
+    ```
+
+
 ## Dependencies
 - Docker Compose
 - OpenSSL

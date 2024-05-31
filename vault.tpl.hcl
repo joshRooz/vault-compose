@@ -20,6 +20,8 @@ seal "shamir" {}
 storage "raft" {
   path    = "/vault/file"
   node_id = "{{CLUSTER_CONTEXT}}-{{HOSTNAME}}"
+  autopilot_redundancy_zone = "{{AZ}}"
+  autopilot_upgrade_version = "{{CLUSTER_VERSION}}"
   retry_join {
     leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-1:8200"
     leader_ca_cert_file   = "/vault/tls/ca.pem"
