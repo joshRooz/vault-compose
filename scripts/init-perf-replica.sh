@@ -44,7 +44,7 @@ pp_token=$(VAULT_ADDR="$pp_addr" vault login -token-only -method=userpass userna
 status="$(VAULT_ADDR="$pp_addr" VAULT_TOKEN="$pp_token" vault read -field=mode sys/replication/performance/status)"
 if [[ "$status" == "disabled" ]] ; then
   echo "# enabling performance replication"
-  VAULT_ADDR="$pp_addr" VAULT_TOKEN="$pp_token" vault write -f sys/replication/performance/primary/enable
+  VAULT_ADDR="$pp_addr" VAULT_TOKEN="$pp_token" vault write -f sys/replication/performance/primary/enable primary_cluster_addr="https://lb-${primary}:8201"
 fi
 
 # perf primary - generate performance secondary token
@@ -55,7 +55,7 @@ token="$(VAULT_ADDR="$pp_addr" VAULT_TOKEN="$pp_token" \
 # activate performance replication
 echo "# activate performance replication - $id"
 VAULT_TOKEN="$(jq -r .root_token "/tmp/$id.json")" \
-  vault write sys/replication/performance/secondary/enable token="$token" ca_file=/vault/tls/ca.pem
+  vault write sys/replication/performance/secondary/enable token="$token" ca_file=/vault/tls/ca.pem primary_api_addr="https://lb-${primary}"
 
 for i in "${instances[@]:1}"; do
   unseal_with_retry "$i" &

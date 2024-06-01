@@ -44,7 +44,7 @@ dp_token=$(VAULT_ADDR="$dp_addr" vault login -token-only -method=userpass userna
 status="$(VAULT_ADDR="$dp_addr" VAULT_TOKEN="$dp_token" vault read -field=mode sys/replication/dr/status)"
 if [[ "$status" == "disabled" ]] ; then
   echo "# enabling dr replication"
-  VAULT_ADDR="$dp_addr" VAULT_TOKEN="$dp_token" vault write -f sys/replication/dr/primary/enable
+  VAULT_ADDR="$dp_addr" VAULT_TOKEN="$dp_token" vault write -f sys/replication/dr/primary/enable primary_cluster_addr="https://lb-${primary}:8201"
 fi
 
 # dr primary - generate dr secondary token
@@ -55,4 +55,4 @@ token="$(VAULT_ADDR="$dp_addr" VAULT_TOKEN="$dp_token" \
 # activate dr replication
 echo "# activate dr replication - $id"
 VAULT_TOKEN="$(jq -r .root_token "/tmp/$id.json")" \
-  vault write sys/replication/dr/secondary/enable token="$token" ca_file=/vault/tls/ca.pem
+  vault write sys/replication/dr/secondary/enable token="$token" ca_file=/vault/tls/ca.pem primary_api_addr="https://lb-${primary}"
