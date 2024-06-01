@@ -38,7 +38,7 @@ vault operator unseal "$(jq -r .unseal_keys_b64[0] "/tmp/$id.json")"
 
 # perf primary - auth
 pp_addr="https://localhost:$(docker inspect "${project}-${primary}-1" | jq -r '.[].NetworkSettings.Ports."8200/tcp".[].HostPort')"
-pp_token=$(VAULT_ADDR="$pp_addr" vault login -token-only -method=userpass username=admin password=admin ttl=5m)
+pp_token=$(VAULT_ADDR="$pp_addr" vault login -token-only -method=userpass username=admin password=admin)
 
 # perf primary - check and enable replication
 status="$(VAULT_ADDR="$pp_addr" VAULT_TOKEN="$pp_token" vault read -field=mode sys/replication/performance/status)"
@@ -51,6 +51,7 @@ fi
 echo "# generating performance secondary token - $id"
 token="$(VAULT_ADDR="$pp_addr" VAULT_TOKEN="$pp_token" \
   vault write -field=wrapping_token sys/replication/performance/primary/secondary-token id="$id" ttl=5m)"
+VAULT_ADDR="$pp_addr" VAULT_TOKEN="$pp_token"  vault token revoke -self
 
 # activate performance replication
 echo "# activate performance replication - $id"
@@ -60,11 +61,10 @@ VAULT_TOKEN="$(jq -r .root_token "/tmp/$id.json")" \
 for i in "${instances[@]:1}"; do
   unseal_with_retry "$i" &
 done
+wait # local node not active but active cluster node not found
 
 # configure autopilot
 echo "# configure autopilot"
 token="$(vault login -token-only -method=userpass username=admin password=admin)"
 VAULT_TOKEN=$token vault operator raft autopilot set-config -cleanup-dead-servers=true -min-quorum=3 -dead-server-last-contact-threshold=2m # sys/storage/raft/autopilot
 VAULT_TOKEN=$token vault token revoke -self
-
-wait

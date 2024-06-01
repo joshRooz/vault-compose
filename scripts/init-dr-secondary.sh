@@ -36,9 +36,13 @@ export VAULT_ADDR="https://localhost:$(docker inspect "${instances[0]}" | jq -r 
 vault operator init -format=json -key-shares=1 -key-threshold=1 > "/tmp/$id.json"
 vault operator unseal "$(jq -r .unseal_keys_b64[0] "/tmp/$id.json")"
 
+# dr secondary - generate public key used to encrypt the token
+pubkey="$(VAULT_TOKEN="$(jq -r .root_token "/tmp/$id.json")" \
+  vault write -f -field=secondary_public_key /sys/replication/dr/secondary/generate-public-key)"
+
 # dr primary - auth
 dp_addr="https://localhost:$(docker inspect "${project}-${primary}-1" | jq -r '.[].NetworkSettings.Ports."8200/tcp".[].HostPort')"
-dp_token=$(VAULT_ADDR="$dp_addr" vault login -token-only -method=userpass username=admin password=admin ttl=5m)
+dp_token=$(VAULT_ADDR="$dp_addr" vault login -token-only -method=userpass username=admin password=admin)
 
 # dr primary - check and enable replication
 status="$(VAULT_ADDR="$dp_addr" VAULT_TOKEN="$dp_token" vault read -field=mode sys/replication/dr/status)"
@@ -50,9 +54,10 @@ fi
 # dr primary - generate dr secondary token
 echo "# generating dr secondary token - $id"
 token="$(VAULT_ADDR="$dp_addr" VAULT_TOKEN="$dp_token" \
-  vault write -field=wrapping_token sys/replication/dr/primary/secondary-token id="$id" ttl=5m)"
+  vault write -field=token sys/replication/dr/primary/secondary-token secondary_public_key="$pubkey" id="$id" ttl=2m)"
+VAULT_ADDR="$dp_addr" VAULT_TOKEN="$dp_token"  vault token revoke -self
 
-# activate dr replication
+# dr secondary - activate dr replication
 echo "# activate dr replication - $id"
 VAULT_TOKEN="$(jq -r .root_token "/tmp/$id.json")" \
   vault write sys/replication/dr/secondary/enable token="$token" ca_file=/vault/tls/ca.pem primary_api_addr="https://lb-${primary}"

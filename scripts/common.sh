@@ -3,6 +3,7 @@
 get_instances() {
   local -n insts=${1:?}
   local id=${2:-${id:?}}
+  local project=${3:-${project:?}}
   local i
   local delim="@" # use a character that is not allowed in a container name
 

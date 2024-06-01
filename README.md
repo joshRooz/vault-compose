@@ -2,8 +2,9 @@
 
 ## Cluster Topology
 
-Four clusters, running in logical redundancy zones (1, 2, and 3), are deployed to a flat network. The primary cluster has six instances as the reference architecture states. To minimize weight the remaining clusters are set to 3 replicas, but can scale all the same. An HAProxy instance fronts each cluster, with dynamic ports forwarded for the Vault API and HAProxy statistics.
+Four clusters, running in logical redundancy zones (1, 2, and 3), are deployed to a flat network. The primary cluster has six instances as specified by the reference architecture. To minimize environment overhead, the remaining clusters are set to 3 replicas, but can scale all the same. An HAProxy instance fronts each cluster, with dynamic ports forwarded for the Vault API and HAProxy statistics.
 
+Git tags (`direct-replication` or `lb-replication`) dictate when the cluster replication targets HAProxy or the cluster directly.
 
 The HAProxy configuration contains a commented KMIP frontend and backend as well.
 
@@ -41,6 +42,26 @@ vault operator raft list-peers
 # clean-up
 task down
 ```
+
+## Replication
+
+### Networking Requirements
+Replication relies on a gRPC connection initiated by the secondary (pull model) with a hard dependency on the cluster address (8201/tcp by default).
+
+There are two ways to establish replication with differing networking requirements -
+1. A one-time request to the primary API address (8200/tcp default) to unwrap the token generated on the primary. Replication is then established over the cluster address (8201/tcp default) using the token.
+1. Encrypting the token generated on the primary using a public key from the secondary. Replication is then established over the cluster address (8201/tcp default) using the token.
+
+The performance replication [script](./scripts/init-perf-replica.sh) uses the wrapped token method. Meanwhile, the DR replication [script](./scripts/init-dr-secondary.sh) uses the public key method to establish replication.
+
+With those two methods mind, **cross-cluster networking requirements** are as follows -
+Source | Destination | Port | Description
+---|---|---|---
+Secondary | Primary | 8201/tcp | The **cluster address** must always be available<br/>on the *active node only* of the primary cluster.
+Secondary | Primary | 8200/tcp | The **API** must be accessible if and only if token<br/>wrapping is used to initiate replication.
+
+> **NOTE**: Make sure to consider role-swapping scenarios when applying networking rules.
+
 
 ## Auto Upgrades
 
@@ -92,11 +113,12 @@ task down
 
 1. Unseal the new nodes in the first session.
     ```sh
+    export VAULT_CACERT=$(pwd)/tls/root-ca/dev-root-ca.pem
     pushd scripts
     . ./common.sh
 
-    i="$(docker ps --filter "name=vault-usca-v2" --format "{{.Names}}" | sort) @"
-    read -d "@" -ra instances <<<"$i"
+    instances=()
+    get_instances instances usca-v2 vault
     for i in "${instances[@]}" ; do
       unseal_with_retry "$i" &
     done
@@ -136,3 +158,8 @@ Taskfile is the successor to Make in this repository. Since Make is commonly ava
 - Taskfile calls role specific scripts - `init-primary.sh`, `init-perf-replica.sh`, `init-dr-secondary.sh`
 - Taskfile also orchestrates failover scenarios using - `network-segmentation.sh`
 - Makefile uses a single, hardcoded script - `init-steady-state.sh`
+
+# References:
+- [HashiCorp Support - Replication without API and wrapped token](https://support.hashicorp.com/hc/en-us/articles/4417477729939-How-to-enable-replication-without-using-either-a-response-wrapped-token-or-port-8200)
+- [HashiCorp Tutorials - Enable DR Replication](https://developer.hashicorp.com/vault/tutorials/enterprise/disaster-recovery#enable-dr-primary-replication)
+- [HashiCorp Tutorials - Setup Performance Replication](https://developer.hashicorp.com/vault/tutorials/enterprise/performance-replication)
