@@ -125,6 +125,7 @@ create_signing_ca_confg() {
 }
 
 echo "generating pki"
+domain=${1:-example.internal}
 
 (
   ## Create CA key and 90-day cert
@@ -144,7 +145,7 @@ echo "generating pki"
 
   for cluster in usca usny usil ustx; do
     # Create Int CA and 60-day cert
-    sub_config=../tls/signing-ca.cnf
+    sub_config=../tls/$cluster-signing-ca.cnf
     sub_path=../tls/$cluster/signing-ca
 
     test -d $sub_path || mkdir -p $sub_path
@@ -164,13 +165,11 @@ echo "generating pki"
       -notext
 
     # Create and issue 30-day server cert
-    # NOTE: Use of 'DNS:*' is a cut corner related to Docker DNS which does not allow for a custom domain to my knowledge
-    # -addext "subjectAltName=DNS:active.vault.$cluster.example.internal,DNS:read.vault.$cluster.example.internal,DNS:vault.$cluster.example.internal,DNS:vault.server.$cluster.example.internal,DNS:vault-$cluster-X" \
     openssl req -new \
       -config $sub_config \
       -nodes \
-      -subj "/O=Vault Compose/CN=vault.server.$cluster.example.internal" \
-      -addext "subjectAltName=DNS:active.vault-lb-$cluster-1,DNS:read.vault-lb-$cluster-1,DNS:vault-lb-$cluster-1,DNS:vault.server.$cluster.example.internal,DNS:*,IP:127.0.0.1" \
+      -subj "/O=Vault Compose/CN=vault.server.$cluster.$domain" \
+      -addext "subjectAltName=DNS:active.lb-$cluster.$domain,DNS:read.lb-$cluster.$domain,DNS:lb-$cluster.$domain,DNS:vault.$cluster.$domain,DNS:vault.server.$cluster.$domain,DNS:localhost,IP:127.0.0.1" \
       -out "../tls/$cluster/cert.csr" \
       -keyout "../tls/$cluster/key.pem"
 

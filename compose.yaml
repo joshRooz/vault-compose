@@ -201,7 +201,7 @@ services:
 
 networks:
   vault:
-    name: vault-flat
+    name: example.internal
 
 configs:
   # shared configs

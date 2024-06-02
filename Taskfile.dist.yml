@@ -7,6 +7,7 @@ env:
   DR_PERF_REPLICA: ustx  # DR for the Performance Replica
 
   COMPOSE_PROJECT: vault  # yq .name compose.yaml
+  COMPOSE_NETWORK: example.internal  # yq .networks[].name compose.yaml
 
 tasks:
   up:
@@ -64,7 +65,7 @@ tasks:
   create-pki:
     dir: scripts
     cmds:
-      - ./init-pki.sh
+      - ./init-pki.sh {{.COMPOSE_NETWORK}}
 
   compose-up:
     cmds:
@@ -78,7 +79,7 @@ tasks:
   init-perf-secondaries:
     dir: scripts
     cmds:
-      - ./init-perf-replica.sh -r {{.PERF_REPLICA}} -p {{.PRIMARY}} -c {{.COMPOSE_PROJECT}}
+      - ./init-perf-replica.sh -r {{.PERF_REPLICA}} -p {{.PRIMARY}} -c {{.COMPOSE_PROJECT}} -d {{.COMPOSE_NETWORK}}
 
   # runs in parallel; as such session output will not be sequential
   init-dr-secondaries:
@@ -88,13 +89,13 @@ tasks:
     dir: scripts
     internal: true
     cmds:
-      - ./init-dr-secondary.sh -r {{.DR_PRIMARY}} -p {{.PRIMARY}} -c {{.COMPOSE_PROJECT}}
+      - ./init-dr-secondary.sh -r {{.DR_PRIMARY}} -p {{.PRIMARY}} -c {{.COMPOSE_PROJECT}} -d {{.COMPOSE_NETWORK}}
 
   init-perf-dr:
     dir: scripts
     internal: true
     cmds:
-      - ./init-dr-secondary.sh -r {{.DR_PERF_REPLICA}} -p {{.PERF_REPLICA}} -c {{.COMPOSE_PROJECT}}
+      - ./init-dr-secondary.sh -r {{.DR_PERF_REPLICA}} -p {{.PERF_REPLICA}} -c {{.COMPOSE_PROJECT}} -d {{.COMPOSE_NETWORK}}
 
 
 

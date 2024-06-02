@@ -2,22 +2,24 @@
 set -oeu pipefail
 
 usage() { 
-  echo "Usage: $0 -r <replica_context> -p <primary_context> -c <compose_project>
+  echo "Usage: $0 -r <replica_context> -p <primary_context> -c <compose_project> -d <compose_domain>
 
     -r  cluster context for the perf secondary
     -p  cluster context for the perf primary cluster
     -c  docker compose project name
+    -d  docker compose network domain
 
-    Example: replica 'b', primary 'a', and compose project 'vault'
-    $0 -r b -p a -c vault" 1>&2
+    Example: replica 'b', primary 'a', compose project 'vault', and compose network 'example.internal'
+    $0 -r b -p a -c vault -d example.internal" 1>&2
 }
 
 # not checking for duplicates - we close our eyes and hope for the best in this demo
-while getopts "r:p:c:" options ; do
+while getopts "r:p:c:d:" options ; do
   case "${options}" in
     r) id="${OPTARG}" ;;
     p) primary="${OPTARG}" ;;
     c) project="${OPTARG}" ;;
+    d) domain="${OPTARG}" ;;
     *) usage && exit 1 ;;
   esac
 done
@@ -44,7 +46,7 @@ pp_token=$(VAULT_ADDR="$pp_addr" vault login -token-only -method=userpass userna
 status="$(VAULT_ADDR="$pp_addr" VAULT_TOKEN="$pp_token" vault read -field=mode sys/replication/performance/status)"
 if [[ "$status" == "disabled" ]] ; then
   echo "# enabling performance replication"
-  VAULT_ADDR="$pp_addr" VAULT_TOKEN="$pp_token" vault write -f sys/replication/performance/primary/enable primary_cluster_addr="https://lb-${primary}:8201"
+  VAULT_ADDR="$pp_addr" VAULT_TOKEN="$pp_token" vault write -f sys/replication/performance/primary/enable primary_cluster_addr="https://lb-${primary}.${domain}:8201"
 fi
 
 # perf primary - generate performance secondary token
@@ -56,7 +58,7 @@ VAULT_ADDR="$pp_addr" VAULT_TOKEN="$pp_token"  vault token revoke -self
 # activate performance replication
 echo "# activate performance replication - $id"
 VAULT_TOKEN="$(jq -r .root_token "/tmp/$id.json")" \
-  vault write sys/replication/performance/secondary/enable token="$token" ca_file=/vault/tls/ca.pem primary_api_addr="https://lb-${primary}"
+  vault write sys/replication/performance/secondary/enable token="$token" ca_file=/vault/tls/ca.pem primary_api_addr="https://lb-${primary}.${domain}"
 
 for i in "${instances[@]:1}"; do
   unseal_with_retry "$i" &
