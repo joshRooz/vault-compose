@@ -145,6 +145,47 @@ Secondary | Primary | 8200/tcp | The **API** must be accessible if and only if t
     ```
 
 
+## Redundancy Zones
+
+### Read Scaling Walk-through
+
+```sh
+# checkout the starting state
+vault operator raft autopilot state
+vault operator members  ; echo ; vault operator raft list-peers
+
+# helpers
+export VAULT_CACERT=$(pwd)/tls/root-ca/dev-root-ca.pem
+pushd scripts
+. ./common.sh
+
+# additional non-voter
+docker compose scale usca=7
+unseal_with_retry vault-usca-7 &
+wait
+
+# scale to a voter + 4 non-voters in each zone
+docker compose scale usca=15
+unseal_with_retry vault-usca-8 &
+unseal_with_retry vault-usca-9 &
+unseal_with_retry vault-usca-10 &
+unseal_with_retry vault-usca-11 &
+unseal_with_retry vault-usca-12 &
+unseal_with_retry vault-usca-13 &
+unseal_with_retry vault-usca-14 &
+unseal_with_retry vault-usca-15 &
+wait
+
+# --------------------------------
+# scale back down to a single voter and single non-voter in each zone
+docker compose scale usca=6
+
+# autopilot will remove from members list ~10s last contact threshold
+# autopilot will clean-up at ~2m dead server last contact threshold
+watch 'vault operator raft autopilot state ; echo ; vault operator members  ; echo ; vault operator raft list-peers'
+
+```
+
 ## Dependencies
 - Docker Compose
 - OpenSSL

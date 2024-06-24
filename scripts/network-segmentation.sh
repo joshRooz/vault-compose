@@ -5,7 +5,7 @@ usage() {
   echo "Usage: $0 -m <mode> [-n <network>] -i <context> -s <source_context> -c <compose_project>
 
     -m  Segmention mode. Valid values are 'allow' or 'deny'.
-    -n  Optional, Docker network name. Default 'vault-flat'.
+    -n  Optional, Docker network name. Default 'example.internal'.
     -i  Destination cluster or load balancer context. Segmentation will be applied to this container(s).
     -s  Source clsuter or load balancer context. Segmentation will be updated with this container(s).
     -c  Docker compose project name.
@@ -14,7 +14,7 @@ usage() {
     $0 -m deny -i hvc-a -s hvc-b -c vault" 1>&2
 }
 
-network=vault-flat
+network=example.internal
 while getopts "m:i:s:n:c:" options ; do
   case "${options}" in
     m)  if [[ ! ${OPTARG} =~ ^(allow|deny)$ ]] ; then
