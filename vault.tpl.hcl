@@ -1,8 +1,9 @@
-api_addr      = "https://{{HOSTNAME}}:8200"
-cluster_addr  = "https://{{HOSTNAME}}:8201"
-cluster_name  = "vault-cluster-{{CLUSTER_CONTEXT}}"
-disable_mlock = true
-ui            = true
+api_addr          = "https://{{HOSTNAME}}:8200"
+cluster_addr      = "https://{{HOSTNAME}}:8201"
+cluster_name      = "vault-cluster-{{CLUSTER_CONTEXT}}"
+default_lease_ttl = "1h"
+disable_mlock     = true
+ui                = true
 listener "tcp" {
   address                            = "[::]:8200"
   tls_cert_file                      = "/vault/tls/bundle.pem"
@@ -18,23 +19,13 @@ replication {
 }
 seal "shamir" {}
 storage "raft" {
-  path    = "/vault/file"
-  node_id = "{{CLUSTER_CONTEXT}}-{{HOSTNAME}}"
+  path                      = "/vault/file"
+  node_id                   = "{{CLUSTER_CONTEXT}}-{{HOSTNAME}}"
   autopilot_redundancy_zone = "{{AZ}}"
   autopilot_upgrade_version = "{{CLUSTER_VERSION}}"
   retry_join {
-    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-1:8200"
+    leader_api_addr       = "https://{{CLUSTER_CONTEXT}}:8200"
     leader_ca_cert_file   = "/vault/tls/ca.pem"
-    leader_tls_servername = "vault.server.{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
-  }
-  retry_join {
-    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-2:8200"
-    leader_ca_cert_file   = "/vault/tls/ca.pem"
-    leader_tls_servername = "vault.server.{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
-  }
-  retry_join {
-    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-3:8200"
-    leader_ca_cert_file   = "/vault/tls/ca.pem"
-    leader_tls_servername = "vault.server.{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
+    leader_tls_servername = "{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
   }
 }
