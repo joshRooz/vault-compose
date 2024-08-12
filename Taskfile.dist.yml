@@ -35,8 +35,22 @@ tasks:
 
   show-network:
     cmds:
-      - docker inspect {{.COMPOSE_PROJECT}}-flat | jq -r '[.[].Containers | .[] | [.Name,.IPv4Address]] | sort | .[] | @tsv'
+      - docker inspect example.internal | jq -r '[ .[].Containers | (to_entries).[] | [.value.Name,.key[:12],.value.IPv4Address] ]| sort | .[]| @tsv'
 
+  promtheus-reload:
+    cmds:
+      - curl -X POST localhost:9090/-/reload
+
+  promtail-reload:
+    cmds:
+      - curl -X POST localhost:8000/reload
+
+  # https://grafana.com/docs/grafana/latest/developers/http_api/admin/#reload-provisioning-configurations
+  grafana-reload:
+    cmds:
+      - curl -X POST grafana:grafana@localhost:3000/api/admin/provisioning/datasources/reload
+      - curl -X POST grafana:grafana@localhost:3000/api/admin/provisioning/dashboards/reload
+      - curl -X POST grafana:grafana@localhost:3000/api/admin/provisioning/plugins/reload
 
 
   # simulation rules

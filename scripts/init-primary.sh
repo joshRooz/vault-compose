@@ -45,7 +45,7 @@ echo "# configure autopilot"
 vault operator raft autopilot set-config -cleanup-dead-servers=true -min-quorum=3 -dead-server-last-contact-threshold=2m # sys/storage/raft/autopilot
 
 echo "# enable audit log with log_raw as ephemeral demo/test env"
-vault audit enable file file_path=/var/log/vault_audit.log log_raw=true
+vault audit enable file file_path=/proc/1/fd/1 low_raw=true
 
 # setup admin auth
 vault auth enable userpass

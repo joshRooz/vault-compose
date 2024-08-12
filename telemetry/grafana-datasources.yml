@@ -1,0 +1,22 @@
+---
+apiVersion: 1
+datasources:
+- name: Prometheus
+  type: prometheus
+  access: proxy
+  url: http://prometheus.example.internal:9090
+  # jsonData:
+  #   httpMethod: POST
+  #   manageAlerts: true
+  #   prometheusType: Prometheus
+  #   prometheusVersion: 2.44.0
+  #   cacheLevel: 'High'
+  #   disableRecordingRules: false
+  #   incrementalQueryOverlapWindow: 10m
+  isDefault: true
+  version: 1
+  editable: false
+- name: Loki
+  type: loki
+  access: proxy
+  url: http://loki.example.internal:3100

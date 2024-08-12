@@ -1,0 +1,60 @@
+# https://grafana.com/docs/loki/latest/send-data/promtail/configuration
+---
+server:
+  http_listen_address: 0.0.0.0
+  http_listen_port: 8000  # exposes: /ready, /metrics, /reload
+
+clients:
+  - url: http://loki.example.internal:3100/loki/api/v1/push
+
+positions:
+  filename: /tmp/positions.yaml
+
+scrape_configs:
+  - job_name: vault
+    docker_sd_configs:
+      - host: unix:///docker.sock
+        filters:
+          - name: label
+            values: ["com.docker.compose.project=vault"]
+          - name: label
+            values: ["name=Vault"]
+    pipeline_stages:
+      - static_labels:
+          service: vault
+    relabel_configs:
+      - source_labels: [__meta_docker_container_name]
+        regex: '^/vault-([[:alpha:]]+)-[[:digit:]]+$'
+        target_label: cluster
+      - source_labels: [__meta_docker_container_name]
+        regex: '/(.*)'
+        target_label: instance
+      - source_labels: [__meta_docker_container_id]
+        target_label: id
+      - source_labels: [__meta_docker_network_ip]
+        target_label: ip_address
+      - source_labels: [__meta_docker_container_label_version]
+        target_label: version
+
+  - job_name: haproxy
+    docker_sd_configs:
+      - host: unix:///docker.sock
+        filters:
+          - name: label
+            values: ["com.docker.compose.project=vault"]
+          - name: label
+            values: ["name=haproxy"]
+    pipeline_stages:
+      - static_labels:
+          service: haproxy
+    relabel_configs:
+      - source_labels: [__meta_docker_container_name]
+        regex: '^/vault-lb-([[:alpha:]]+)-[[:digit:]]+$'
+        target_label: cluster
+      - source_labels: [__meta_docker_container_name]
+        regex: '/(.*)'
+        target_label: instance
+      - source_labels: [__meta_docker_container_id]
+        target_label: id
+      - source_labels: [__meta_docker_network_ip]
+        target_label: ip_address

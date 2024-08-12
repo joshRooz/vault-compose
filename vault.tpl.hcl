@@ -13,6 +13,9 @@ listener "tcp" {
 
   proxy_protocol_behavior         = "allow_authorized"
   proxy_protocol_authorized_addrs = "{{PROXY_ADDR}}"
+  telemetry {
+    unauthenticated_metrics_access = true
+  }
 }
 replication {
   allow_forwarding_via_token = "new_token"
@@ -28,4 +31,9 @@ storage "raft" {
     leader_ca_cert_file   = "/vault/tls/ca.pem"
     leader_tls_servername = "{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
   }
+}
+telemetry {
+  disable_hostname          = true
+  enable_hostname_label     = true
+  prometheus_retention_time = "2m"
 }

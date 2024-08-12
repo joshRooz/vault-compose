@@ -18,7 +18,7 @@ services:
         AZ=$(( (i-1) % 3 +1 ))
 
         sed "s|{{AZ}}|$$AZ|g ; s|{{CLUSTER_VERSION}}|$$CLUSTER_VERSION|g ; s|{{HOSTNAME}}|$$HOSTNAME|g ; s|{{CLUSTER_CONTEXT}}|$$CLUSTER_CONTEXT|g ; s|{{DOMAIN}}|$$DOMAIN|g ; s|{{PROXY_ADDR}}|$$PROXY_ADDR|g" /tmp/vault.tpl.hcl > /vault/config/vault.hcl
-        /bin/vault server -config=/vault/config #-log-level=debug
+        /bin/vault server -config=/vault/config -log-format=json #-log-level=debug
     restart: unless-stopped
     deploy:
       replicas: 6
@@ -146,6 +146,8 @@ services:
   # load balancers
   lb-usca:
     image: ${LB_IMAGE}:${LB_VERSION}
+    labels: &lb-labels
+      name: haproxy
     command: &lb-command
       - /bin/sh
       - -c
@@ -168,6 +170,7 @@ services:
 
   lb-usny:
     image: ${LB_IMAGE}:${LB_VERSION}
+    labels: *lb-labels
     command: *lb-command
     restart: unless-stopped
     networks: *vault-flat
@@ -179,6 +182,7 @@ services:
 
   lb-usil:
     image: ${LB_IMAGE}:${LB_VERSION}
+    labels: *lb-labels
     command: *lb-command
     restart: unless-stopped
     networks: *vault-flat
@@ -190,6 +194,7 @@ services:
 
   lb-ustx:
     image: ${LB_IMAGE}:${LB_VERSION}
+    labels: *lb-labels
     command: *lb-command
     restart: unless-stopped
     networks: *vault-flat
@@ -198,6 +203,115 @@ services:
       <<: *lb-env-vars
       CLUSTER_CONTEXT: ustx
     configs: *lb-configs
+
+  # addons: telemetry
+  prometheus:
+    image: ${PROMETHEUS_IMAGE}:${PROMETHEUS_VERSION}
+    command: >
+      --config.file=/etc/prometheus/prometheus.yml
+      --storage.tsdb.path=/prometheus
+      --web.console.libraries=/usr/share/prometheus/console_libraries
+      --web.console.templates=/usr/share/prometheus/consoles
+      --web.enable-lifecycle
+    restart: unless-stopped
+    networks: *vault-flat
+    ports:
+      - 9090:9090/tcp
+    configs:
+      # shared configs
+      - source: root-ca
+        target: /prometheus/ca.pem
+      # prometheus configs
+      - source: prometheus-config
+        target: /etc/prometheus/prometheus.yml
+    volumes:
+      - prometheus-storage:/prometheus
+
+  promtail:
+    image: ${PROMTAIL_IMAGE}:${PROMTAIL_VERSION}
+    command: >
+      -config.file=/etc/promtail/promtail.yml
+      -config.expand-env
+      -server.enable-runtime-reload
+      -log-config-reverse-order
+      -log.level=debug
+    restart: unless-stopped
+    networks: *vault-flat
+    ports:
+      - 8000:8000/tcp
+    configs:
+      - source: promtail-config
+        target: /etc/promtail/promtail.yml
+    volumes:
+      - ${PROMTAIL_DOCKER_SOCKET}:/docker.sock
+
+  loki:
+    image: ${LOKI_IMAGE}:${LOKI_VERSION}
+    command: >
+      -config.file=/etc/loki/config.yml
+      -log-config-reverse-order
+    restart: unless-stopped
+    networks: *vault-flat
+    ports:
+      - 3100:3100/tcp
+    configs:
+      - source: loki-config
+        target: /etc/loki/config.yml
+    volumes:
+      - loki-storage:/tmp
+
+  grafana:
+    image: ${GRAFANA_IMAGE}:${GRAFANA_VERSION}
+    restart: unless-stopped
+    networks: *vault-flat
+    ports:
+      - 3000:3000/tcp
+    environment:
+      GF_DASHBOARDS_VERSIONS_TO_KEEP: 1
+      GF_INSTALL_PLUGINS: grafana-clock-panel
+      GF_LOG_LEVEL: info
+      GF_LOG_MODE:  console
+      GF_SERVER_ENABLE_GZIP: true
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: true
+    configs:
+      - source: grafana-datasources
+        target: /etc/grafana/provisioning/datasources/datasources.yml
+      - source: grafana-dashboards
+        target: /etc/grafana/provisioning/dashboards/dashboards.yml
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ${GRAFANA_DASHBOARDS}:/var/lib/grafana/dashboards
+
+
+  # addons: synthetic traffic
+  # benchmark:
+  #   # https://github.com/hashicorp/vault-benchmark
+  #   # https://developer.hashicorp.com/vault/tutorials/operations/benchmark-vault
+  #   image: hashicorp/vault-benchmark:0.3
+  #   command:
+  #     - /bin/sh
+  #     - -c
+  #     - |
+  #       sed "s|{{DURATION}}|$$DURATION|g ; s|{{REPORT_MODE}}|$$REPORT_MODE|g" /tmp/vault-benchmark.tpl.hcl > $$HOME/vault-benchmark.hcl
+  #       /bin/vault-benchmark run -config=$$HOME/vault-benchmark.hcl
+  #   restart: no
+  #   networks: *vault-flat
+  #   environment:
+  #     X_VAULT_BENCHMARK_ENABLED: true
+  #     VAULT_BENCHMARK_LOG_LEVEL: DEBUG
+  #     VAULT_CACERT: /tmp/ca.pem
+  #     VAULT_ADDR: https://lb-usca.example.internal
+  #     VAULT_TOKEN:
+  #     #VAULT_NAMESPACE: ns1
+  #     DURATION: 10s
+  #     REPORT_MODE: terse # json
+  #   configs:
+  #     - source: vault-benchmark-tpl-config
+  #       target: /tmp/vault-benchmark.tpl.hcl
+  #     - source: root-ca
+  #       target: /tmp/ca.pem
 
 networks:
   vault:
@@ -220,6 +334,19 @@ configs:
     file: ./tls/usil/bundle.pem
   ustx-pki-bundle:
     file: ./tls/ustx/bundle.pem
+  # add-ons
+  prometheus-config:
+    file: ./telemetry/prometheus.yml
+  promtail-config:
+    file: ./telemetry/promtail.yml
+  loki-config:
+    file: ./telemetry/loki.yml
+  grafana-datasources:
+    file: ./telemetry/grafana-datasources.yml
+  grafana-dashboards:
+    file: ./telemetry/grafana-dashboards.yml
+  # vault-benchmark-tpl-config:
+  #   file: ./vault-benchmark.tpl.hcl
 
 secrets:
   # shared secrets
@@ -234,3 +361,8 @@ secrets:
     file: ./tls/usil/key.pem
   ustx-pki-key:
     file: ./tls/ustx/key.pem
+
+volumes:
+  prometheus-storage: {}
+  loki-storage: {}
+  grafana-storage: {}

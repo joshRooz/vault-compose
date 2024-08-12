@@ -1,0 +1,95 @@
+global:
+  scrape_interval: 30s
+  #evaluation_interval: 3s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: usca
+    metrics_path: /v1/sys/metrics
+    params: &vault-params
+      format: ['prometheus']
+    scheme: https
+    tls_config: &vault-tls
+      ca_file: /prometheus/ca.pem
+      server_name: usca.example.internal
+    dns_sd_configs:
+      - names:
+        - usca.example.internal
+        - usca-v2.example.internal
+        type: A
+        port: 8200
+        refresh_interval: 30s
+
+  - job_name: usny
+    metrics_path: /v1/sys/metrics
+    params: *vault-params
+    scheme: https
+    tls_config:
+      <<: *vault-tls
+      server_name: usny.example.internal
+    dns_sd_configs:
+      - names: ["usny.example.internal"]
+        type: A
+        port: 8200
+        refresh_interval: 30s
+
+  - job_name: usil
+    metrics_path: /v1/sys/metrics
+    params: *vault-params
+    scheme: https
+    tls_config:
+      <<: *vault-tls
+      server_name: usil.example.internal
+    dns_sd_configs:
+      - names: ["usil.example.internal"]
+        type: A
+        port: 8200
+        refresh_interval: 30s
+
+  - job_name: ustx
+    metrics_path: /v1/sys/metrics
+    params: *vault-params
+    scheme: https
+    tls_config:
+      <<: *vault-tls
+      server_name: ustx.example.internal
+    dns_sd_configs:
+      - names: ["ustx.example.internal"]
+        type: A
+        port: 8200
+        refresh_interval: 30s
+
+  - job_name: lb-usca
+    dns_sd_configs:
+      - names:
+        - lb-usca.example.internal
+        type: A
+        port: 9000
+        refresh_interval: 30s
+
+  - job_name: lb-usny
+    dns_sd_configs:
+      - names:
+        - lb-usny.example.internal
+        type: A
+        port: 9000
+        refresh_interval: 30s
+
+  - job_name: lb-usil
+    dns_sd_configs:
+      - names:
+        - lb-usil.example.internal
+        type: A
+        port: 9000
+        refresh_interval: 30s
+
+  - job_name: lb-ustx
+    dns_sd_configs:
+      - names:
+        - lb-ustx.example.internal
+        type: A
+        port: 9000
+        refresh_interval: 30s
