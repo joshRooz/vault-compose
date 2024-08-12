@@ -133,3 +133,6 @@ tasks:
       - cmd: rm -r secrets/init-backup.json snapshots
         ignore_error: true
 
+  delete-volumes: # helper rule that does not run by default
+    cmds:
+      - docker volume rm vault_grafana-storage vault_loki-storage vault_prometheus-storage

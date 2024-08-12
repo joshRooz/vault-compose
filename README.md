@@ -22,6 +22,11 @@ The HAProxy configuration contains a commented KMIP frontend and backend as well
 ![cluster-topology-image](docs/topology.png)
 
 ## Usage
+Common configuration is defined in `.env`. Defaults should work out-of-the-box in *most* cases.
+1. **Vault License** | `VAULT_LICENSE_PATH` - Set to the location of your license file.
+1. **Vault Version** | `VAULT_IMAGE` and `VAULT_VERSION` - Set as desired.
+1. **Telemetry Logs** | `PROMTAIL_DOCKER_SOCKET` - In an attempt to maximize portability and minimize dependencies, the Docker API is exposed to Promtail. Be sure to update if your Docker configuration does not match `/var/run/docker.sock`.
+
 ```sh
 task up
 export VAULT_CACERT=$(pwd)/tls/root-ca/dev-root-ca.pem
@@ -38,9 +43,24 @@ vault operator raft list-peers
 
 # do.the.vaulting.
 
+# shared telemetry stack
+# prometheus -> http://localhost:9090
+# grafana -> http://localhost:3000
 
 # clean-up
 task down
+task delete-volumes # removes loki, prometheus, and grafana volumes
+```
+
+## Telemetry
+The environment ships *logs* (operational and audit) and *metrics* to Grafana.
+
+Dashboards will be added as time permits.
+
+**LogQL Helpers**
+```logql
+{service="vault"} | json | _level != "" # all vault ops logs
+{service="vault"} | json | type != ""   # all vault audit logs
 ```
 
 ## Replication
@@ -191,16 +211,37 @@ watch 'vault operator raft autopilot state ; echo ; vault operator members  ; ec
 - OpenSSL
 - Bash
 - JQ
-- Optional: Taskfile or Make - *NOTE:both use the compose plugin as opposed to the docker-compose standalone binary*
+- [Taskfile](https://taskfile.dev/installation) *(optional)*
 
-**Taskfile vs Makefile**:
-Taskfile is the successor to Make in this repository. Since Make is commonly available by default, it has been left in the repo as-is (for now).
-
-- Taskfile calls role specific scripts - `init-primary.sh`, `init-perf-replica.sh`, `init-dr-secondary.sh`
-- Taskfile also orchestrates failover scenarios using - `network-segmentation.sh`
-- Makefile uses a single, hardcoded script - `init-steady-state.sh`
+> **NOTE**: While Taskfile (`task`) is optional it is used to orchestrate the environment and will make deployment a push button exercise. At a minimum, checkout `Taskfile.dist.yml` for the steps to run on your own.
 
 # References:
 - [HashiCorp Support - Replication without API and wrapped token](https://support.hashicorp.com/hc/en-us/articles/4417477729939-How-to-enable-replication-without-using-either-a-response-wrapped-token-or-port-8200)
 - [HashiCorp Tutorials - Enable DR Replication](https://developer.hashicorp.com/vault/tutorials/enterprise/disaster-recovery#enable-dr-primary-replication)
 - [HashiCorp Tutorials - Setup Performance Replication](https://developer.hashicorp.com/vault/tutorials/enterprise/performance-replication)
+
+# Appendix - When Deployment Time Matters
+The Vault configuration can be altered to establish the topology much quicker (~1m), but it will be less resilient to lifecycle changes you may want to test.
+
+```diff
+ storage "raft" {
+   autopilot_redundancy_zone = "{{AZ}}"
+   autopilot_upgrade_version = "{{CLUSTER_VERSION}}"
+   retry_join {
+-    leader_api_addr       = "https://{{CLUSTER_CONTEXT}}:8200"
++    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-1.{{DOMAIN}}:8200"
++    leader_ca_cert_file   = "/vault/tls/ca.pem"
++    leader_tls_servername = "{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
++  }
++  retry_join {
++    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-2.{{DOMAIN}}:8200"
++    leader_ca_cert_file   = "/vault/tls/ca.pem"
++    leader_tls_servername = "{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
++  }
++  retry_join {
++    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-3.{{DOMAIN}}:8200"
+     leader_ca_cert_file   = "/vault/tls/ca.pem"
+     leader_tls_servername = "{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
+   }
+ }
+```

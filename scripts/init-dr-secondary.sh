@@ -63,3 +63,8 @@ VAULT_ADDR="$dp_addr" VAULT_TOKEN="$dp_token"  vault token revoke -self
 echo "# activate dr replication - $id"
 VAULT_TOKEN="$(jq -r .root_token "/tmp/$id.json")" \
   vault write sys/replication/dr/secondary/enable token="$token" ca_file=/vault/tls/ca.pem primary_api_addr="https://lb-${primary}.${domain}"
+
+for i in "${instances[@]:1}"; do
+  unseal_with_retry "$i" &
+done
+wait
