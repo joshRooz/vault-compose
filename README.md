@@ -210,10 +210,18 @@ watch 'vault operator raft autopilot state ; echo ; vault operator members  ; ec
 - Docker Compose
 - OpenSSL
 - Bash
-- JQ
+- JQ 1.7+[^1]
 - [Taskfile](https://taskfile.dev/installation) *(optional)*
 
 > **NOTE**: While Taskfile (`task`) is optional it is used to orchestrate the environment and will make deployment a push button exercise. At a minimum, checkout `Taskfile.dist.yml` for the steps to run on your own.
+
+[^1]: JQ 1.6 may produce the following error -
+
+      ```sh
+      jq: error: syntax error, unexpected '[', expecting FORMAT or QQSTRING_START (Unix shell quoting issues?) at <top-level>, line 1:
+      .[].NetworkSettings.Ports."8200/tcp".[].HostPort
+      jq: 1 compile error
+      ```
 
 # References:
 - [HashiCorp Support - Replication without API and wrapped token](https://support.hashicorp.com/hc/en-us/articles/4417477729939-How-to-enable-replication-without-using-either-a-response-wrapped-token-or-port-8200)
