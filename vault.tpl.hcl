@@ -27,7 +27,17 @@ storage "raft" {
   autopilot_redundancy_zone = "{{AZ}}"
   autopilot_upgrade_version = "{{CLUSTER_VERSION}}"
   retry_join {
-    leader_api_addr       = "https://{{CLUSTER_CONTEXT}}:8200"
+    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-1.{{DOMAIN}}:8200"
+    leader_ca_cert_file   = "/vault/tls/ca.pem"
+    leader_tls_servername = "{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
+  }
+  retry_join {
+    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-2.{{DOMAIN}}:8200"
+    leader_ca_cert_file   = "/vault/tls/ca.pem"
+    leader_tls_servername = "{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
+  }
+  retry_join {
+    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-3.{{DOMAIN}}:8200"
     leader_ca_cert_file   = "/vault/tls/ca.pem"
     leader_tls_servername = "{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
   }

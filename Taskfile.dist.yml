@@ -37,6 +37,16 @@ tasks:
     cmds:
       - docker inspect example.internal | jq -r '[ .[].Containers | (to_entries).[] | [.value.Name,.key[:12],.value.IPv4Address] ]| sort | .[]| @tsv'
 
+  vault-unseal: # Usage: 'task vault-unseal cluster=usca'
+    dir: scripts
+    cmds:
+      - ./vault-seal.sh -c {{.cluster}} -p {{.COMPOSE_PROJECT}}
+
+  vault-seal: # Usage: 'task vault-unseal cluster=usny'
+    dir: scripts
+    cmds:
+      - ./vault-seal.sh -s -c {{.cluster}} -p {{.COMPOSE_PROJECT}}
+
   promtheus-reload:
     cmds:
       - curl -X POST localhost:9090/-/reload
@@ -54,7 +64,7 @@ tasks:
 
 
   # simulation rules
-  network-disrupt: # real 0m3.528s
+  network-disrupt:
     label: "{{.TASK}}: primary <-> perf-replica"
     dir: scripts
     cmds:

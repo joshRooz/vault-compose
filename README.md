@@ -102,6 +102,7 @@ Secondary | Primary | 8200/tcp | The **API** must be accessible if and only if t
 > **NOTE**: Cluster upgrade order is very important in practice (and this is *not* the right order), but here we are throwing caution to the wind.
 >           For more information checkout: https://developer.hashicorp.com/vault/docs/upgrading#enterprise-replication-installations
 
+1. **Optional**: Make the changes outlined in [Appendix - Reliable but Slow](#appendix---reliable-but-slow) in `vault.tpl.hcl`.
 1. Add the following service to the `compose.yaml` file. This mimics scaling up before decommissioning the existing instances. Notice the `CLUSTER_VERSION` is incremented to `0.0.2`.
     ```yaml
     usca-v2:
@@ -169,32 +170,16 @@ Secondary | Primary | 8200/tcp | The **API** must be accessible if and only if t
 
 ### Read Scaling Walk-through
 
+**Optional Prerequisite**: Make the changes outlined in [Appendix - Reliable but Slow](#appendix---reliable-but-slow) in `vault.tpl.hcl`. Required if you remove the first three instances (eg: `vault-usca-1`).
+
 ```sh
 # checkout the starting state
 vault operator raft autopilot state
 vault operator members  ; echo ; vault operator raft list-peers
 
-# helpers
-export VAULT_CACERT=$(pwd)/tls/root-ca/dev-root-ca.pem
-pushd scripts
-. ./common.sh
-
-# additional non-voter
-docker compose scale usca=7
-unseal_with_retry vault-usca-7 &
-wait
-
 # scale to a voter + 4 non-voters in each zone
 docker compose scale usca=15
-unseal_with_retry vault-usca-8 &
-unseal_with_retry vault-usca-9 &
-unseal_with_retry vault-usca-10 &
-unseal_with_retry vault-usca-11 &
-unseal_with_retry vault-usca-12 &
-unseal_with_retry vault-usca-13 &
-unseal_with_retry vault-usca-14 &
-unseal_with_retry vault-usca-15 &
-wait
+task vault-unseal cluster=usca
 
 # --------------------------------
 # scale back down to a single voter and single non-voter in each zone
@@ -203,7 +188,6 @@ docker compose scale usca=6
 # autopilot will remove from members list ~10s last contact threshold
 # autopilot will clean-up at ~2m dead server last contact threshold
 watch 'vault operator raft autopilot state ; echo ; vault operator members  ; echo ; vault operator raft list-peers'
-
 ```
 
 ## Dependencies
@@ -223,33 +207,33 @@ watch 'vault operator raft autopilot state ; echo ; vault operator members  ; ec
       jq: 1 compile error
       ```
 
-# References:
+# References
 - [HashiCorp Support - Replication without API and wrapped token](https://support.hashicorp.com/hc/en-us/articles/4417477729939-How-to-enable-replication-without-using-either-a-response-wrapped-token-or-port-8200)
 - [HashiCorp Tutorials - Enable DR Replication](https://developer.hashicorp.com/vault/tutorials/enterprise/disaster-recovery#enable-dr-primary-replication)
 - [HashiCorp Tutorials - Setup Performance Replication](https://developer.hashicorp.com/vault/tutorials/enterprise/performance-replication)
 
-# Appendix - When Deployment Time Matters
-The Vault configuration can be altered to establish the topology much quicker (~1m), but it will be less resilient to lifecycle changes you may want to test.
+# Appendix - Reliable but Slow
+The Vault `retry_join {}` configuration can be altered to be more resilient to lifecycle changes, but it is signficantly slower to deploy.
 
 ```diff
  storage "raft" {
    autopilot_redundancy_zone = "{{AZ}}"
    autopilot_upgrade_version = "{{CLUSTER_VERSION}}"
    retry_join {
--    leader_api_addr       = "https://{{CLUSTER_CONTEXT}}:8200"
-+    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-1.{{DOMAIN}}:8200"
-+    leader_ca_cert_file   = "/vault/tls/ca.pem"
-+    leader_tls_servername = "{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
-+  }
-+  retry_join {
-+    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-2.{{DOMAIN}}:8200"
-+    leader_ca_cert_file   = "/vault/tls/ca.pem"
-+    leader_tls_servername = "{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
-+  }
-+  retry_join {
-+    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-3.{{DOMAIN}}:8200"
++    leader_api_addr       = "https://{{CLUSTER_CONTEXT}}:8200"
+-    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-1.{{DOMAIN}}:8200"
      leader_ca_cert_file   = "/vault/tls/ca.pem"
      leader_tls_servername = "{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
    }
+-  retry_join {
+-    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-2.{{DOMAIN}}:8200"
+-    leader_ca_cert_file   = "/vault/tls/ca.pem"
+-    leader_tls_servername = "{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
+-  }
+-  retry_join {
+-    leader_api_addr       = "https://vault-{{CLUSTER_CONTEXT}}-3.{{DOMAIN}}:8200"
+-    leader_ca_cert_file   = "/vault/tls/ca.pem"
+-    leader_tls_servername = "{{CLUSTER_CONTEXT}}.{{DOMAIN}}"
+-  }
  }
 ```
