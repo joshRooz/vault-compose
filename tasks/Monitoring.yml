@@ -1,0 +1,17 @@
+version: '3'
+
+tasks:
+  prometheus-reload:
+    cmds:
+      - curl -X POST localhost:9090/-/reload
+
+  promtail-reload:
+    cmds:
+      - curl -X POST localhost:8000/reload
+
+  # https://grafana.com/docs/grafana/latest/developers/http_api/admin/#reload-provisioning-configurations
+  grafana-reload:
+    cmds:
+      - curl -X POST grafana:grafana@localhost:3000/api/admin/provisioning/datasources/reload
+      - curl -X POST grafana:grafana@localhost:3000/api/admin/provisioning/dashboards/reload
+      - curl -X POST grafana:grafana@localhost:3000/api/admin/provisioning/plugins/reload

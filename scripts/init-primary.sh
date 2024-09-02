@@ -60,15 +60,24 @@ echo "# setup userpass for admin auth"
 vault auth enable userpass
 vault write -f auth/userpass/users/admin password=admin policies=global-wildcard
 
-vault policy write global-wildcard - <<EOF
+cat - <<EOF | vault policy write global-wildcard -
 path "*" { capabilities = ["create", "read", "update", "delete", "list", "sudo"] }
 EOF
 
-vault policy write dr-ops - <<EOF
+cat - <<EOF | vault policy write dr-operations -
 path "sys/replication/dr/secondary/promote" { capabilities = [ "update" ] }
 path "sys/replication/dr/secondary/update-primary" { capabilities = [ "update" ] }
 path "sys/storage/raft/autopilot/state" { capabilities = [ "update" , "read" ] }
+# additional permissions to update a demoted, or recover a failed, primary
+path "sys/replication/dr/primary/demote" { capabilities = [ "create", "update" ] }
+path "sys/replication/dr/secondary/generate-public-key" { capabilities = [ "create", "update" ] }
+path "sys/replication/dr/primary/secondary-token" { capabilities = [ "create", "update", "sudo" ] }
 EOF
+vault write auth/token/roles/dr-operations \
+  allowed_policies=dr-operations \
+  orphan=true \
+  renewable=false \
+  token_type=batch
 
 unset VAULT_TOKEN
 

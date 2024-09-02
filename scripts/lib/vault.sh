@@ -3,11 +3,21 @@
 get_leader() {
   local id=${1:?"cluster context required"}
   local project=${2:-${project:?"compose project required"}}
-  local port
   local leader
+  local insts=()
 
-  # go through the lb so we get a working node, as long as we have a quorum
-  port="$(get_port "${project}-lb-${id}-1" 443)"
+  # use the load balancer by default, but allow targeting vault instance directly
+  local use_lb=${3:-true}
+  local label="${project}-lb-${id}-1"
+  local port=443
+
+  if ! $use_lb ; then
+    get_instances insts "$id" "$project"
+    label="${insts[0]}"
+    port=8200
+  fi
+
+  port="$(get_port "$label" $port)"
   if ! leader="$(VAULT_ADDR="https://localhost:$port" vault status -format=json | jq -r .leader_address)" ; then
     return 1
   fi

@@ -23,7 +23,6 @@ tasks:
     silent: true
 
 
-
   # helpers
   show-ports:
     cmds:
@@ -46,43 +45,6 @@ tasks:
     dir: scripts
     cmds:
       - ./vault-seal.sh -s -c {{.cluster}} -p {{.COMPOSE_PROJECT}}
-
-  promtheus-reload:
-    cmds:
-      - curl -X POST localhost:9090/-/reload
-
-  promtail-reload:
-    cmds:
-      - curl -X POST localhost:8000/reload
-
-  # https://grafana.com/docs/grafana/latest/developers/http_api/admin/#reload-provisioning-configurations
-  grafana-reload:
-    cmds:
-      - curl -X POST grafana:grafana@localhost:3000/api/admin/provisioning/datasources/reload
-      - curl -X POST grafana:grafana@localhost:3000/api/admin/provisioning/dashboards/reload
-      - curl -X POST grafana:grafana@localhost:3000/api/admin/provisioning/plugins/reload
-
-
-  # simulation rules
-  network-disrupt:
-    label: "{{.TASK}}: primary <-> perf-replica"
-    dir: scripts
-    cmds:
-      # primary --x perf-replica
-      - ./network-segmentation.sh -m deny -i {{.PERF_REPLICA}} -s {{.PRIMARY}} -c {{.COMPOSE_PROJECT}}
-      # perf-replica --x primary
-      - ./network-segmentation.sh -m deny -i {{.PRIMARY}} -s {{.PERF_REPLICA}} -c {{.COMPOSE_PROJECT}}
-
-  network-repair:
-    label: "{{.TASK}}: primary <-> perf-replica"
-    dir: scripts
-    cmds:
-      # primary --> perf-replica
-      - ./network-segmentation.sh -m allow -i {{.PERF_REPLICA}} -s {{.PRIMARY}} -c {{.COMPOSE_PROJECT}}
-      # perf-replica --> primary
-      - ./network-segmentation.sh -m allow -i {{.PRIMARY}} -s {{.PERF_REPLICA}} -c {{.COMPOSE_PROJECT}}
-
-
 
 
   # setup rules
@@ -124,12 +86,13 @@ tasks:
 
 
   # clean-up rules
-  compose-down:
+  compose-down: # usage: 'task compose-down [cleanup_volumes=true]'
     internal: true
     cmds:
       - docker compose down
       - cmd: docker volume prune -f >/dev/null
         ignore_error: true
+      - cmd: '{{ if .cleanup_volumes }}docker volume rm vault_grafana-storage vault_loki-storage vault_prometheus-storage{{ end }}'
 
   delete-secrets:
     internal: true
@@ -146,3 +109,11 @@ tasks:
   delete-volumes: # helper rule that does not run by default
     cmds:
       - docker volume rm vault_grafana-storage vault_loki-storage vault_prometheus-storage
+
+includes:
+  chaos:
+    taskfile: ./tasks/Chaos.yml
+    optional: true
+  monitoring:
+    taskfile: ./tasks/Monitoring.yml
+    optional: true

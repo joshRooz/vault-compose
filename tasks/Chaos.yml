@@ -1,0 +1,21 @@
+version: '3'
+
+tasks:
+  network-disrupt:
+    label: "{{.TASK}}: {{.PRIMARY}} X-X {{.PERF_REPLICA}}"
+    dir: scripts
+    cmds:
+      - ./network-segmentation.sh {{printf "-m deny -i %s -s %s -c %s"  $.PRIMARY $.PERF_REPLICA $.COMPOSE_PROJECT}}
+      - ./network-segmentation.sh {{printf "-m deny -i lb-%s -s %s -c %s"  $.PRIMARY $.PERF_REPLICA $.COMPOSE_PROJECT}}
+      - ./network-segmentation.sh {{printf "-m deny -i lb-%s -s lb-%s -c %s"  $.PRIMARY $.PERF_REPLICA $.COMPOSE_PROJECT}}
+      - ./network-segmentation.sh {{printf "-m deny -i %s -s lb-%s -c %s"  $.PRIMARY $.PERF_REPLICA $.COMPOSE_PROJECT}}
+
+  network-repair:
+    label: "{{.TASK}}: {{.PRIMARY}} <-> {{.PERF_REPLICA}}"
+    dir: scripts
+    cmds:
+      - ./network-segmentation.sh {{printf "-m allow -i %s -s %s -c %s"  $.PRIMARY $.PERF_REPLICA $.COMPOSE_PROJECT}}
+      - ./network-segmentation.sh {{printf "-m allow -i lb-%s -s %s -c %s"  $.PRIMARY $.PERF_REPLICA $.COMPOSE_PROJECT}}
+      - ./network-segmentation.sh {{printf "-m allow -i lb-%s -s lb-%s -c %s"  $.PRIMARY $.PERF_REPLICA $.COMPOSE_PROJECT}}
+      - ./network-segmentation.sh {{printf "-m allow -i %s -s lb-%s -c %s"  $.PRIMARY $.PERF_REPLICA $.COMPOSE_PROJECT}}
+
