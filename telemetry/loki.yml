@@ -12,6 +12,18 @@ common:
   replication_factor: 1
   path_prefix: /tmp/loki
 
+compactor:
+  working_directory: /tmp/loki/retention
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 1h
+  retention_delete_worker_count: 10
+  delete_request_store: filesystem
+
+limits_config:
+  retention_period: 2d
+  max_query_lookback: 2d
+
 schema_config:
   configs:
   - from: 2020-05-15
