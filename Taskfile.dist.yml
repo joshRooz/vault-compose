@@ -117,3 +117,6 @@ includes:
   monitoring:
     taskfile: ./tasks/Monitoring.yml
     optional: true
+  topology:
+    taskfile: ./tasks/Topology.yml
+    optional: true

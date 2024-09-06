@@ -82,6 +82,105 @@ Secondary | Primary | 8200/tcp | The **API** must be accessible if and only if t
 
 > **NOTE**: Make sure to consider role-swapping scenarios when applying networking rules.
 
+### Topology Mobility
+
+Once replication is enabled the topology becomes mobile. This section steps through cluster role transitions.
+
+#### Graceful Disaster Recovery Role Reversal
+Controlled scenario that ensures data is fully replicated, and data integrity is intact.
+
+Scenario: From [steady state](#steady-state), demote **USCA** and promote **USIL**.
+
+1. Pre-flight validations for replication health.
+1. Communicate the role reversal window's start.
+1. Disable USCA API/KMIP traffic.
+1. Demote USCA to secondary.
+1. Promote USIL to primary.
+1. Test access to Vault data while USIL as the primary.
+1. Update DNS/mechanisms to direct client traffic to USIL.
+1. Enable replication for USCA as a secondary, with USIL as primary.
+
+**Checkpoint**: Primary and DR replica roles have been reversed, with client traffic now being directed to the new primary.
+
+1. Validate or redirect perf replication to the new primary.
+
+Run Demo: `task topology:swap-dr-roles`
+
+
+#### Disaster Recovery Promotion
+A "break the glass" scenario where there is potential for data loss.
+
+Scenario: From [steady state](#steady-state), **USCA** fails; activate **USIL**.
+
+1. Declare a disaster due to serverly impacted USCA availability.
+1. Isolate USCA (failed primary) to prevent any potential for a split-brain scenario.
+1. Activate USIL as the primary.
+1. Test access to Vault data with USIL as the primary.
+1. Update DNS/mechanisms to direct client traffic to USIL.
+
+**Checkpoint**: At this point, the failed primary and new DR primary both have the primary role assignment. The new primary receives all client traffic, and the failed primary is isolated to prevent any requests from clients when it comes back online.
+
+1. Validate or redirect performance replication to the new primary.
+
+**Checkpoint**: Service interruption for the **USCA** cluster is resolved.
+
+1. Recover, replace, restore, demote the USCA failed primary.
+1. Point USCA to UNSY for replication.
+1. Remove USCA from isolation/quarantine.
+1. *(optional)* Plan and schedule failback, following the graceful procedure.
+
+Run Demo: `task topology:promote-dr-secondary`
+
+
+#### Performance Replication Role Reversal
+
+Scenario: From [steady state](#steady-state), demote **USCA** to a performance secondary and promote **USNY** to performance primary.
+
+> **NOTE**: If the primary cluster has both a Disaster Recovery (DR) replica and a Performance Replica (PR), as in this demo environment, a PR role reversal is unlikely to be the desired course of action.
+>
+> Assuming replication is current, [DR role changes](#graceful-disaster-recovery-role-reversal) will retain tokens and leases and is preferred [in most cases] for role reversal.
+
+1. Schedule an outage window to demote USCA.
+1. Disable USCA API/KMIP traffic.
+1. Demote USCA to secondary.
+1. Promote USNY to primary.
+1. Update replication for USCA as secondary.
+1. Enable USCA API/KMIP traffic.
+1. Update DNS/mechanisms that client traffic relies upon.
+
+**Checkpoint**: Primary and performance replica roles have been reversed.
+
+1. If there are other secondaries, they need to be updated with the new primary address as well.
+
+Run Demo: `task topology:swap-perf-roles`
+
+
+#### Performance Replication Promotion
+
+Scenario: From [steady state](#steady-state), **USCA** fails; promote **USNY** to performance primary.
+
+> **NOTE**: If the primary cluster has both a DR replica and a PR replica, as in this demo environment, promoting a PR is likely the last option:
+>   1. Resolve the primary cluster's service outage.
+>   1. Perform [DR Activation](#disaster-recovery-activation) and redirect the PR to the new primary.
+>   1. If the service outage also impacts the DR cluster (root cause analysis is imperative), promoting the PR becomes the best option.
+>
+> With a PR promotion, all clients previously connecting to the failed primary must reauthenticate after failover. There are also PKI considerations.
+
+1. Declare a disaster due to serverly impacted USCA availability.
+1. Decide to activate USNY.
+1. Isolate USCA, the failed primary, to prevent any potential split-brain scenario.
+1. Promote USNY to primary.
+1. Test access to Vault data with USNY as the primary.
+1. Update DNS/mechanisms that client traffic relies upon.
+
+**Checkpoint**: The primary role has been restored, and client traffic is now directed to the new primary. If there are other secondaries, they need to be updated with the new primary as well.
+
+1. Recover, replace, restore, demote the USCA failed primary.
+1. Disable USCA isolation.
+1. Enable replication for USCA as a secondary, with USNY as primary.
+1. *(optional)* Plan and schedule failback, following the graceful procedure.
+
+Run Demo: `task topology:promote-perf-replica`
 
 ## Auto Upgrades
 
@@ -211,6 +310,7 @@ watch 'vault operator raft autopilot state ; echo ; vault operator members  ; ec
 - [HashiCorp Support - Replication without API and wrapped token](https://support.hashicorp.com/hc/en-us/articles/4417477729939-How-to-enable-replication-without-using-either-a-response-wrapped-token-or-port-8200)
 - [HashiCorp Tutorials - Enable DR Replication](https://developer.hashicorp.com/vault/tutorials/enterprise/disaster-recovery#enable-dr-primary-replication)
 - [HashiCorp Tutorials - Setup Performance Replication](https://developer.hashicorp.com/vault/tutorials/enterprise/performance-replication)
+- [HashiCorp Tutorials - DR Replication Failover](https://developer.hashicorp.com/vault/tutorials/enterprise/disaster-recovery-replication-failover)
 
 # Appendix - Reliable but Slow
 The Vault `retry_join {}` configuration can be altered to be more resilient to lifecycle changes, but it is signficantly slower to deploy.

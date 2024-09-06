@@ -1,0 +1,34 @@
+version: '3'
+
+tasks:
+  # Graceful/Planned
+  # ------------------
+  # from steady state, safely switch the dr roles
+  # to swap back afterward - 'task topology:swap-dr-roles DR_PRIMARY=usca PRIMARY=usil'
+  swap-dr-roles: 
+    dir: scripts
+    cmds:
+      - ./swap-dr-secondary.sh -r {{.DR_PRIMARY}} -p {{.PRIMARY}} -c {{.COMPOSE_PROJECT}} -d {{.COMPOSE_NETWORK}}
+
+  # from steady state, swap the performance primary and secondary roles
+  # to swap back afterward - 'task topology:swap-perf-roles PERF_REPLICA=usca PRIMARY=usny'
+  swap-perf-roles:
+    dir: scripts
+    cmds:
+      - ./swap-perf-replica.sh -r {{.PERF_REPLICA}} -p {{.PRIMARY}} -c {{.COMPOSE_PROJECT}} -d {{.COMPOSE_NETWORK}}
+
+  # Failures/Unplanned
+  # ------------------
+  # from steady state, promote the dr secondary to primary
+  # to revert afterward, gracefully - 'task topology:swap-dr-roles DR_PRIMARY=usca PRIMARY=usil'
+  promote-dr-secondary:
+    dir: scripts
+    cmds:
+      - ./promote-dr-secondary.sh -r {{.DR_PRIMARY}} -p {{.PRIMARY}} -c {{.COMPOSE_PROJECT}} -d {{.COMPOSE_NETWORK}}
+
+  # from steady state, promote the performance secondary to primary
+  # to revert afterward, gracefully - 'task topology:swap-perf-roles PERF_REPLICA=usca PRIMARY=usny'
+  promote-perf-replica:
+    dir: scripts
+    cmds:
+      - ./promote-perf-replica.sh -r {{.PERF_REPLICA}} -p {{.PRIMARY}} -c {{.COMPOSE_PROJECT}} -d {{.COMPOSE_NETWORK}}
