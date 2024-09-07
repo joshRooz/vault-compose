@@ -233,18 +233,7 @@ Run Demo: `task topology:promote-perf-replica`
 
 1. Unseal the new nodes in the first session.
     ```sh
-    export VAULT_CACERT=$(pwd)/tls/root-ca/dev-root-ca.pem
-    pushd scripts
-    . ./common.sh
-
-    instances=()
-    get_instances instances usca-v2 vault
-    for i in "${instances[@]}" ; do
-      unseal_with_retry "$i" &
-    done
-    wait
-
-    popd
+    task vault-unseal cluster=usca-v2
     ```
 
 1. Wait until the `Status` is *await-server-removal* and the `TargetVersion` is *0.0.2*.
